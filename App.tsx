@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
-import { SQLSnippet, QueryResult, SafetyCheck } from './types';
+import { SQLSnippet, QueryResult, SafetyCheck, LintResult, ExecutionHistory } from './types';
 import Sidebar from './components/Sidebar';
 import SnippetExplorer from './components/SnippetExplorer';
 import ResultPanel from './components/ResultPanel';
 import SettingsPanel from './components/SettingsPanel';
+import DbtExportModal from './components/DbtExportModal';
 import { executeSql } from './services/sqlRunner';
-import { autoTagSnippet, checkSqlSafety, semanticSearch } from './services/geminiService';
+import { autoTagSnippet, checkSqlSafety, semanticSearch, generateDbtModel, lintAndFormatSql } from './services/geminiService';
 import { 
   Play, 
   Save, 
@@ -17,11 +18,21 @@ import {
   Hash,
   Activity,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Box,
+  Wand2,
+  AlertCircle,
+  CheckCircle2,
+  History,
+  Terminal,
+  Clock,
+  ExternalLink,
+  RotateCw
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [snippets, setSnippets] = useState<SQLSnippet[]>([]);
+  const [history, setHistory] = useState<ExecutionHistory[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'files' | 'search' | 'history' | 'settings'>('files');
   const [sqlCode, setSqlCode] = useState('');
@@ -29,11 +40,18 @@ const App: React.FC = () => {
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLinting, setIsLinting] = useState(false);
   const [safetyInfo, setSafetyInfo] = useState<SafetyCheck | null>(null);
+  const [lintInfo, setLintInfo] = useState<LintResult | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SQLSnippet[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [editorMinimized, setEditorMinimized] = useState(false);
+
+  // dbt Export State
+  const [isExportingDbt, setIsExportingDbt] = useState(false);
+  const [dbtExportData, setDbtExportData] = useState<{ modelSql: string, schemaYaml: string } | null>(null);
+  const [showDbtModal, setShowDbtModal] = useState(false);
 
   // Configuration state
   const [appConfig, setAppConfig] = useState({
@@ -79,6 +97,7 @@ const App: React.FC = () => {
       setSqlCode(snip.code);
       setSnippetName(snip.name);
       setSafetyInfo(null);
+      setLintInfo(null);
       if (activeTab === 'settings') setActiveTab('files');
     }
   };
@@ -100,6 +119,7 @@ const App: React.FC = () => {
     setSqlCode(newSnip.code);
     setSnippetName(newSnip.name);
     setSafetyInfo(null);
+    setLintInfo(null);
     setActiveTab('files');
   };
 
@@ -109,9 +129,25 @@ const App: React.FC = () => {
     setActiveId(null);
     setSqlCode('');
     setSnippetName('');
+    setLintInfo(null);
+  };
+
+  const handleLintAndFormat = async () => {
+    if (!sqlCode.trim()) return;
+    setIsLinting(true);
+    try {
+      const result = await lintAndFormatSql(sqlCode);
+      setLintInfo(result);
+      if (result.formattedCode) {
+        setSqlCode(result.formattedCode);
+      }
+    } finally {
+      setIsLinting(false);
+    }
   };
 
   const runQuery = async () => {
+    if (!sqlCode.trim()) return;
     setIsExecuting(true);
     try {
       const safety = await checkSqlSafety(sqlCode);
@@ -119,6 +155,17 @@ const App: React.FC = () => {
 
       const result = await executeSql(sqlCode);
       setQueryResult(result);
+
+      // Add to History
+      const historyEntry: ExecutionHistory = {
+        id: Math.random().toString(36).substr(2, 9),
+        snippetId: activeId,
+        name: snippetName || 'Ad-hoc Query',
+        code: sqlCode,
+        timestamp: Date.now(),
+        executionTime: result.executionTime
+      };
+      setHistory(prev => [historyEntry, ...prev]);
 
       if (activeId) {
         setSnippets(prev => prev.map(s => 
@@ -149,6 +196,18 @@ const App: React.FC = () => {
     }
   };
 
+  const exportAsDbt = async () => {
+    setDbtExportData(null);
+    setShowDbtModal(true);
+    setIsExportingDbt(true);
+    try {
+      const dbtData = await generateDbtModel(snippetName || "Untitled Model", sqlCode);
+      setDbtExportData(dbtData);
+    } finally {
+      setIsExportingDbt(false);
+    }
+  };
+
   const performSearch = async () => {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
@@ -161,6 +220,27 @@ const App: React.FC = () => {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const loadFromHistory = (entry: ExecutionHistory) => {
+    setSqlCode(entry.code);
+    setSnippetName(entry.name);
+    if (entry.snippetId) {
+      setActiveId(entry.snippetId);
+    } else {
+      setActiveId(null);
+    }
+    setQueryResult(null);
+    setSafetyInfo(null);
+    setLintInfo(null);
+  };
+
+  const rerunFromHistory = (entry: ExecutionHistory) => {
+    loadFromHistory(entry);
+    // Use setTimeout to ensure state updates before running
+    setTimeout(() => {
+      runQuery();
+    }, 0);
   };
 
   return (
@@ -217,20 +297,63 @@ const App: React.FC = () => {
         )}
 
         {activeTab === 'history' && (
-          <div className="flex-1 p-4">
-            <h2 className="text-xs font-bold uppercase text-[#bbbbbb] tracking-wider mb-4 flex items-center">
-              <Activity size={14} className="mr-2" /> Recent Activity
-            </h2>
-            <div className="space-y-4">
-              {snippets.sort((a,b) => b.lastRunAt - a.lastRunAt).slice(0, 5).map(s => (
-                <div key={s.id} className="text-[11px] border-b border-[#333333] pb-2">
-                  <p className="text-[#cccccc] font-medium">{s.name}</p>
-                  <div className="flex justify-between text-[9px] text-[#858585] mt-1">
-                    <span>Used {s.usageCount} times</span>
-                    <span>{s.lastRunAt ? new Date(s.lastRunAt).toLocaleTimeString() : 'Never'}</span>
-                  </div>
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-[#333333] bg-[#2d2d2d]">
+              <h2 className="text-xs font-bold uppercase text-[#bbbbbb] tracking-wider flex items-center">
+                <History size={14} className="mr-2" /> Execution History
+              </h2>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {history.length === 0 ? (
+                <div className="p-8 text-center text-[#858585] flex flex-col items-center">
+                  <Clock size={32} className="opacity-20 mb-2" />
+                  <p className="text-[10px]">No execution history yet.</p>
                 </div>
-              ))}
+              ) : (
+                <div className="divide-y divide-[#333333]">
+                  {history.map((entry) => (
+                    <div key={entry.id} className="p-3 hover:bg-[#2a2d2e] group transition-colors">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[11px] font-semibold text-[#cccccc] truncate pr-2">
+                          {entry.name}
+                        </span>
+                        <span className="text-[9px] text-[#858585] whitespace-nowrap">
+                          {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-3 text-[9px] text-[#858585] mb-2">
+                        <span className="flex items-center">
+                          <Terminal size={10} className="mr-1" /> {entry.executionTime}ms
+                        </span>
+                        {entry.snippetId && (
+                          <span className="flex items-center opacity-60">
+                            ID: {entry.snippetId.substring(0, 6)}...
+                          </span>
+                        )}
+                      </div>
+                      <code className="block text-[10px] text-[#6a9955] font-mono truncate mb-2 opacity-80 italic">
+                        {entry.code.replace(/\s+/g, ' ')}
+                      </code>
+                      <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => loadFromHistory(entry)}
+                          className="flex items-center space-x-1 px-2 py-0.5 bg-[#3c3c3c] hover:bg-[#45494e] text-white rounded text-[9px]"
+                        >
+                          <ExternalLink size={10} />
+                          <span>Load</span>
+                        </button>
+                        <button
+                          onClick={() => rerunFromHistory(entry)}
+                          className="flex items-center space-x-1 px-2 py-0.5 bg-[#007acc] hover:bg-[#118ad4] text-white rounded text-[9px]"
+                        >
+                          <RotateCw size={10} />
+                          <span>Re-run</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -263,6 +386,24 @@ const App: React.FC = () => {
                 />
               </div>
               <div className="flex items-center space-x-2">
+                <button 
+                  onClick={handleLintAndFormat}
+                  disabled={!sqlCode || isLinting}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#4ec9b0]/10 hover:bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 rounded text-[#4ec9b0] text-xs font-medium transition-colors disabled:opacity-50"
+                  title="Clean, Lint & Format with AI"
+                >
+                  <Wand2 size={14} className={isLinting ? "animate-pulse" : ""} />
+                  <span className="hidden md:inline">{isLinting ? 'Cleaning...' : 'Clean'}</span>
+                </button>
+                <button 
+                  onClick={exportAsDbt}
+                  disabled={!sqlCode || isExecuting}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#ff694b]/10 hover:bg-[#ff694b]/20 border border-[#ff694b]/30 rounded text-[#ff694b] text-xs font-medium transition-colors disabled:opacity-50"
+                  title="Export to dbt"
+                >
+                  <Box size={14} />
+                  <span className="hidden md:inline">dbt</span>
+                </button>
                 <button 
                   onClick={runQuery}
                   disabled={isExecuting}
@@ -313,23 +454,79 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {safetyInfo && (
-              <div className={`p-4 ${safetyInfo.isSafe ? 'bg-blue-900/10 border-blue-900/30' : 'bg-amber-900/10 border-amber-900/30'} border-t border-b`}>
-                <div className="flex items-start">
-                  {safetyInfo.isSafe ? (
-                    <Lightbulb size={18} className="text-blue-400 mt-1 mr-3 flex-shrink-0" />
-                  ) : (
-                    <ShieldAlert size={18} className="text-amber-400 mt-1 mr-3 flex-shrink-0" />
-                  )}
-                  <div className="text-xs">
-                    <p className="font-bold text-[#bbbbbb] mb-1">AI Safety Analysis</p>
-                    {safetyInfo.warnings.map((w, i) => (
-                      <p key={i} className="text-amber-400/90 mb-1 flex items-center">
-                        <Hash size={10} className="mr-1" /> {w}
-                      </p>
-                    ))}
-                    <p className="text-[#858585] italic">{safetyInfo.suggestions}</p>
+            {/* Combined Linting & Safety Suggestions Panel */}
+            {(lintInfo || safetyInfo) && (
+              <div className="bg-[#252526] border-t border-[#1e1e1e] max-h-48 overflow-y-auto">
+                <div className="flex px-4 py-2 border-b border-[#333333] bg-[#2d2d2d] sticky top-0 z-10 items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-[#bbbbbb] tracking-widest flex items-center">
+                    <Activity size={12} className="mr-2" /> AI Intelligence Panel
+                  </span>
+                  <div className="flex gap-4">
+                    {lintInfo && (
+                      <span className={`text-[10px] font-bold ${lintInfo.errors.length > 0 ? 'text-[#f14c4c]' : 'text-green-400'}`}>
+                        {lintInfo.errors.length} Problems
+                      </span>
+                    )}
+                    {lintInfo && (
+                      <span className="text-[10px] font-bold text-blue-400">
+                        {lintInfo.suggestions.length} Style Suggestions
+                      </span>
+                    )}
                   </div>
+                </div>
+
+                <div className="p-4 space-y-4">
+                  {/* Safety Warnings */}
+                  {safetyInfo && !safetyInfo.isSafe && (
+                    <div className="flex items-start">
+                      <ShieldAlert size={14} className="text-amber-500 mt-0.5 mr-3 flex-shrink-0" />
+                      <div className="text-[11px]">
+                        <p className="font-bold text-amber-500 mb-1">Safety Risk</p>
+                        {safetyInfo.warnings.map((w, i) => (
+                          <p key={i} className="text-[#cccccc]">{w}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Linting Errors */}
+                  {lintInfo && lintInfo.errors.length > 0 && (
+                    <div className="flex items-start">
+                      <AlertCircle size={14} className="text-[#f14c4c] mt-0.5 mr-3 flex-shrink-0" />
+                      <div className="text-[11px]">
+                        <p className="font-bold text-[#f14c4c] mb-1">Syntax Issues</p>
+                        {lintInfo.errors.map((e, i) => (
+                          <p key={i} className="text-[#cccccc]">{e}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Linting Suggestions */}
+                  {lintInfo && lintInfo.suggestions.length > 0 && (
+                    <div className="flex items-start">
+                      <CheckCircle2 size={14} className="text-[#4ec9b0] mt-0.5 mr-3 flex-shrink-0" />
+                      <div className="text-[11px]">
+                        <p className="font-bold text-[#4ec9b0] mb-1">Styling Tips</p>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {lintInfo.suggestions.map((s, i) => (
+                            <span key={i} className="bg-[#1e1e1e] border border-[#333333] px-2 py-0.5 rounded text-[#858585]">{s}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Safety Suggestions */}
+                  {safetyInfo && safetyInfo.isSafe && (
+                    <div className="flex items-start">
+                      <Lightbulb size={14} className="text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
+                      <div className="text-[11px]">
+                        <p className="font-bold text-blue-400 mb-1">Optimization Suggestion</p>
+                        <p className="text-[#cccccc] italic">{safetyInfo.suggestions}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -340,6 +537,14 @@ const App: React.FC = () => {
           </>
         )}
       </main>
+
+      {/* dbt Export Modal */}
+      <DbtExportModal 
+        isOpen={showDbtModal} 
+        onClose={() => setShowDbtModal(false)} 
+        data={dbtExportData}
+        modelName={snippetName || "Untitled Model"}
+      />
 
       <div className="fixed bottom-0 left-0 right-0 h-6 bg-[#007acc] flex items-center px-3 justify-between text-[11px] text-white z-50">
         <div className="flex items-center space-x-4">

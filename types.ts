@@ -29,3 +29,19 @@ export interface SafetyCheck {
   warnings: string[];
   suggestions: string;
 }
+
+export interface LintResult {
+  isValid: boolean;
+  errors: string[];
+  suggestions: string[];
+  formattedCode: string;
+}
+
+export interface ExecutionHistory {
+  id: string;
+  snippetId: string | null;
+  name: string;
+  code: string;
+  timestamp: number;
+  executionTime: number;
+}

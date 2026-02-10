@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { SQLSnippet, SafetyCheck } from "../types";
+import { SQLSnippet, SafetyCheck, LintResult } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
@@ -83,5 +83,82 @@ export const checkSqlSafety = async (code: string): Promise<SafetyCheck> => {
   } catch (error) {
     console.error("Safety check failed", error);
     return { isSafe: true, warnings: [], suggestions: "Could not analyze safety." };
+  }
+};
+
+export const generateDbtModel = async (name: string, sql: string): Promise<{ modelSql: string, schemaYaml: string }> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Transform this SQL query into a production-ready dbt model. 
+      The model name is "${name}". 
+      1. Provide the .sql model file using Jinja best practices (e.g. config block, CTEs).
+      2. Provide a corresponding schema.yml file with the model definition, column descriptions, and basic tests (unique, not_null).
+      
+      SQL Input:
+      ${sql}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            modelSql: { type: Type.STRING },
+            schemaYaml: { type: Type.STRING }
+          },
+          required: ["modelSql", "schemaYaml"]
+        }
+      }
+    });
+
+    return JSON.parse(response.text || '{"modelSql": "", "schemaYaml": ""}');
+  } catch (error) {
+    console.error("Dbt generation failed", error);
+    return { modelSql: "-- Error generating dbt model", schemaYaml: "# Error generating schema.yml" };
+  }
+};
+
+export const lintAndFormatSql = async (sql: string): Promise<LintResult> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `You are a SQL expert. Perform the following on the input SQL:
+      1. Syntax check: Identify any invalid SQL syntax.
+      2. Linting: Provide suggestions for better style (keywords in uppercase, indentation, use of aliases).
+      3. Formatting: Provide a beautifully formatted version of the code.
+      
+      SQL:
+      ${sql}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            isValid: { type: Type.BOOLEAN },
+            errors: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Critical syntax errors"
+            },
+            suggestions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Linting and style suggestions"
+            },
+            formattedCode: { type: Type.STRING }
+          },
+          required: ["isValid", "errors", "suggestions", "formattedCode"]
+        }
+      }
+    });
+
+    return JSON.parse(response.text || '{"isValid": true, "errors": [], "suggestions": [], "formattedCode": ""}');
+  } catch (error) {
+    console.error("Linting failed", error);
+    return {
+      isValid: true,
+      errors: [],
+      suggestions: ["Could not perform AI linting."],
+      formattedCode: sql
+    };
   }
 };
