@@ -1,8 +1,7 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { SQLSnippet, SafetyCheck, LintResult, SqlDialect } from "../types";
 
-// Always use a named parameter and obtain the API key directly from process.env.API_KEY
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const autoTagSnippet = async (code: string, dialect: SqlDialect): Promise<{ tags: string[], category: string }> => {
@@ -29,7 +28,6 @@ export const autoTagSnippet = async (code: string, dialect: SqlDialect): Promise
       }
     });
 
-    // The .text property is a getter, not a method.
     return JSON.parse(response.text || '{"tags": [], "category": "General"}');
   } catch (error) {
     console.error("Auto-tagging failed", error);
@@ -163,4 +161,31 @@ export const lintAndFormatSql = async (sql: string, dialect: SqlDialect): Promis
       formattedCode: sql
     };
   }
+};
+
+// Chat Session Support
+let activeChat: Chat | null = null;
+
+export const initializeChat = (dialect: SqlDialect) => {
+  activeChat = ai.chats.create({
+    model: 'gemini-3-flash-preview',
+    config: {
+      systemInstruction: `You are an expert Data Engineer and SQL architect specializing in ${dialect}. 
+      You help users write, optimize, and debug SQL snippets. 
+      You have access to the user's currently active snippet if they provide it.
+      Format all code blocks with the appropriate SQL language tag.
+      Be concise, professional, and technical.`
+    }
+  });
+  return activeChat;
+};
+
+export const sendChatMessage = async (message: string, currentSqlContext?: string) => {
+  if (!activeChat) initializeChat('PostgreSQL');
+  
+  const prompt = currentSqlContext 
+    ? `CONTEXT SQL SNIPPET:\n\`\`\`sql\n${currentSqlContext}\n\`\`\`\n\nUSER QUESTION: ${message}`
+    : message;
+
+  return activeChat!.sendMessageStream({ message: prompt });
 };

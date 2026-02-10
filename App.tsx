@@ -7,8 +7,9 @@ import ResultPanel from './components/ResultPanel';
 import SettingsPanel from './components/SettingsPanel';
 import DbtExportModal from './components/DbtExportModal';
 import TestDashboard from './components/TestDashboard';
+import ChatPanel from './components/ChatPanel';
 import { executeSql } from './services/sqlRunner';
-import { autoTagSnippet, checkSqlSafety, semanticSearch, generateDbtModel, lintAndFormatSql } from './services/geminiService';
+import { autoTagSnippet, checkSqlSafety, semanticSearch, generateDbtModel, lintAndFormatSql, initializeChat } from './services/geminiService';
 import { 
   Play, 
   Save, 
@@ -32,14 +33,15 @@ import {
   Beaker,
   ShieldCheck,
   AlertTriangle,
-  ChevronRight
+  ChevronRight,
+  MessageSquareText
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [snippets, setSnippets] = useState<SQLSnippet[]>([]);
   const [history, setHistory] = useState<ExecutionHistory[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'files' | 'search' | 'history' | 'settings' | 'tests'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'search' | 'history' | 'settings' | 'tests' | 'chat'>('files');
   const [sqlCode, setSqlCode] = useState('');
   const [snippetName, setSnippetName] = useState('');
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
@@ -98,6 +100,7 @@ const App: React.FC = () => {
     setActiveId(initial[0].id);
     setSqlCode(initial[0].code);
     setSnippetName(initial[0].name);
+    initializeChat(appConfig.dialect);
   }, []);
 
   const handleSelectSnippet = (id: string) => {
@@ -109,7 +112,7 @@ const App: React.FC = () => {
       setSafetyInfo(null);
       setLintInfo(null);
       setShowSafetyApproval(false);
-      if (activeTab === 'settings' || activeTab === 'tests') setActiveTab('files');
+      if (['settings', 'tests', 'chat'].includes(activeTab)) setActiveTab('files');
     }
   };
 
@@ -170,14 +173,12 @@ const App: React.FC = () => {
     
     const isMod = isModificationQuery(code);
 
-    // Disable safety blocking for SELECTs
     if (!skipSafetyCheck && isMod) {
       setIsAnalyzingSafety(true);
       try {
         const safety = await checkSqlSafety(code, appConfig.dialect);
         setSafetyInfo(safety);
         
-        // If the query is not safe or has warnings, prompt the user for approval
         if (!safety.isSafe || safety.warnings.length > 0) {
           setShowSafetyApproval(true);
           setIsAnalyzingSafety(false);
@@ -190,14 +191,12 @@ const App: React.FC = () => {
       }
     }
 
-    // Actual execution
     setIsExecuting(true);
     setShowSafetyApproval(false);
     try {
       const result = await executeSql(code, appConfig.dialect);
       setQueryResult(result);
 
-      // Add to History
       const historyEntry: ExecutionHistory = {
         id: Math.random().toString(36).substr(2, 9),
         snippetId: activeId,
@@ -337,6 +336,8 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'chat' && <ChatPanel currentSql={sqlCode} dialect={appConfig.dialect} />}
+
         {activeTab === 'history' && (
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="p-4 border-b border-[#333333] bg-[#2d2d2d]">
@@ -434,6 +435,14 @@ const App: React.FC = () => {
               </div>
               <div className="flex items-center space-x-2">
                 <button 
+                  onClick={() => setActiveTab('chat')}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded text-blue-400 text-xs font-medium transition-colors"
+                  title="Discuss this snippet with AI"
+                >
+                  <MessageSquareText size={14} />
+                  <span className="hidden lg:inline">Ask AI</span>
+                </button>
+                <button 
                   onClick={handleLintAndFormat}
                   disabled={!sqlCode || isLinting}
                   className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#4ec9b0]/10 hover:bg-[#4ec9b0]/20 border border-[#4ec9b0]/30 rounded text-[#4ec9b0] text-xs font-medium transition-colors disabled:opacity-50"
@@ -500,7 +509,6 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              {/* Approval Overlay for Unsafe Modification Queries */}
               {showSafetyApproval && (
                 <div className="absolute inset-0 z-50 bg-[#1e1e1e]/95 flex flex-col items-center justify-center p-8 backdrop-blur-md">
                   <div className="max-w-md w-full bg-[#252526] border border-amber-500/50 rounded-lg shadow-2xl p-8 transform transition-all duration-300 scale-100">

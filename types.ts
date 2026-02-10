@@ -58,3 +58,10 @@ export interface TestCase {
   error?: string;
   duration?: number;
 }
+
+// Chat Types
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+  timestamp: number;
+}

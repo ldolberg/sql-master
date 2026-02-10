@@ -6,12 +6,13 @@ import {
   HistoryIcon, 
   SettingsIcon,
   PlusIcon,
-  FlaskConicalIcon
+  FlaskConicalIcon,
+  MessageSquare
 } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'files' | 'search' | 'history' | 'settings' | 'tests';
-  setActiveTab: (tab: 'files' | 'search' | 'history' | 'settings' | 'tests') => void;
+  activeTab: 'files' | 'search' | 'history' | 'settings' | 'tests' | 'chat';
+  setActiveTab: (tab: 'files' | 'search' | 'history' | 'settings' | 'tests' | 'chat') => void;
   onNewSnippet: () => void;
 }
 
@@ -19,6 +20,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onNewSnippet
   const tabs = [
     { id: 'files', icon: FolderIcon, label: 'Snippets' },
     { id: 'search', icon: SearchIcon, label: 'Search' },
+    { id: 'chat', icon: MessageSquare, label: 'Chat' },
     { id: 'history', icon: HistoryIcon, label: 'Recent' },
     { id: 'tests', icon: FlaskConicalIcon, label: 'Tests' },
   ] as const;
