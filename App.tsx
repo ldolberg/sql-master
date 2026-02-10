@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SQLSnippet, QueryResult, SafetyCheck } from './types';
 import Sidebar from './components/Sidebar';
 import SnippetExplorer from './components/SnippetExplorer';
 import ResultPanel from './components/ResultPanel';
+import SettingsPanel from './components/SettingsPanel';
 import { executeSql } from './services/sqlRunner';
 import { autoTagSnippet, checkSqlSafety, semanticSearch } from './services/geminiService';
 import { 
@@ -22,7 +23,7 @@ import {
 const App: React.FC = () => {
   const [snippets, setSnippets] = useState<SQLSnippet[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'files' | 'search' | 'history'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'search' | 'history' | 'settings'>('files');
   const [sqlCode, setSqlCode] = useState('');
   const [snippetName, setSnippetName] = useState('');
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
@@ -33,6 +34,13 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<SQLSnippet[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [editorMinimized, setEditorMinimized] = useState(false);
+
+  // Configuration state
+  const [appConfig, setAppConfig] = useState({
+    openaiKey: '',
+    anthropicKey: '',
+    geminiModel: 'gemini-3-flash-preview'
+  });
 
   // Initialize with dummy data
   useEffect(() => {
@@ -71,6 +79,7 @@ const App: React.FC = () => {
       setSqlCode(snip.code);
       setSnippetName(snip.name);
       setSafetyInfo(null);
+      if (activeTab === 'settings') setActiveTab('files');
     }
   };
 
@@ -91,6 +100,7 @@ const App: React.FC = () => {
     setSqlCode(newSnip.code);
     setSnippetName(newSnip.name);
     setSafetyInfo(null);
+    setActiveTab('files');
   };
 
   const handleDeleteSnippet = () => {
@@ -104,18 +114,12 @@ const App: React.FC = () => {
   const runQuery = async () => {
     setIsExecuting(true);
     try {
-      // Logic for safety check on run
       const safety = await checkSqlSafety(sqlCode);
       setSafetyInfo(safety);
-
-      if (!safety.isSafe && safety.warnings.length > 0) {
-        // We warn but proceed in this demo environment
-      }
 
       const result = await executeSql(sqlCode);
       setQueryResult(result);
 
-      // Update usage tracking
       if (activeId) {
         setSnippets(prev => prev.map(s => 
           s.id === activeId 
@@ -161,10 +165,8 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#1e1e1e] text-[#d4d4d4] overflow-hidden">
-      {/* Sidebar Navigation */}
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onNewSnippet={handleNewSnippet} />
 
-      {/* Side Panel (Explorer / Search) */}
       <div className="w-64 md:w-80 bg-[#252526] border-r border-[#1e1e1e] flex flex-col">
         {activeTab === 'files' && (
           <SnippetExplorer 
@@ -232,101 +234,113 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
-      </div>
 
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0">
-        {/* Editor Toolbar */}
-        <div className="h-12 bg-[#2d2d2d] flex items-center px-4 justify-between border-b border-[#1e1e1e]">
-          <div className="flex items-center space-x-3 overflow-hidden">
-            <input 
-              value={snippetName}
-              onChange={(e) => setSnippetName(e.target.value)}
-              className="bg-transparent text-sm font-semibold text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#007acc] px-2 py-1 rounded w-64"
-              placeholder="Snippet Name..."
-            />
-          </div>
-          <div className="flex items-center space-x-2">
-            <button 
-              onClick={runQuery}
-              disabled={isExecuting}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#007acc] hover:bg-[#118ad4] rounded text-white text-xs font-medium transition-colors disabled:opacity-50"
-            >
-              <Play size={14} fill="currentColor" />
-              <span>{isExecuting ? 'Running...' : 'Execute'}</span>
-            </button>
-            <button 
-              onClick={saveSnippet}
-              disabled={isSaving}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#3a3d41] hover:bg-[#45494e] rounded text-white text-xs font-medium transition-colors"
-            >
-              <Save size={14} />
-              <span>{isSaving ? 'Saving...' : 'Save & Tag'}</span>
-            </button>
-            <button 
-              onClick={handleDeleteSnippet}
-              className="p-1.5 text-[#858585] hover:text-[#f14c4c] transition-colors"
-              title="Delete Snippet"
-            >
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* SQL Editor Area */}
-        <div className={`transition-all duration-300 ${editorMinimized ? 'h-12' : 'flex-1'} bg-[#1e1e1e] flex flex-col relative`}>
-          <div className="absolute right-4 top-2 z-10 flex space-x-2">
-            <button 
-              onClick={() => setEditorMinimized(!editorMinimized)}
-              className="p-1 hover:bg-[#333333] rounded text-[#858585]"
-            >
-              {editorMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
-            </button>
-          </div>
-          
-          <textarea
-            className={`w-full h-full p-6 bg-[#1e1e1e] text-[#d4d4d4] code-font text-sm resize-none focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[#007acc]/30 ${editorMinimized ? 'hidden' : 'block'}`}
-            spellCheck={false}
-            value={sqlCode}
-            onChange={(e) => setSqlCode(e.target.value)}
-          />
-          
-          {editorMinimized && (
-            <div className="flex items-center px-6 h-full text-xs text-[#858585] italic truncate">
-              {sqlCode.substring(0, 100)}...
-            </div>
-          )}
-        </div>
-
-        {/* Safety & Intelligence Suggestions */}
-        {safetyInfo && (
-          <div className={`p-4 ${safetyInfo.isSafe ? 'bg-blue-900/10 border-blue-900/30' : 'bg-amber-900/10 border-amber-900/30'} border-t border-b`}>
-            <div className="flex items-start">
-              {safetyInfo.isSafe ? (
-                <Lightbulb size={18} className="text-blue-400 mt-1 mr-3 flex-shrink-0" />
-              ) : (
-                <ShieldAlert size={18} className="text-amber-400 mt-1 mr-3 flex-shrink-0" />
-              )}
-              <div className="text-xs">
-                <p className="font-bold text-[#bbbbbb] mb-1">AI Safety Analysis</p>
-                {safetyInfo.warnings.map((w, i) => (
-                  <p key={i} className="text-amber-400/90 mb-1 flex items-center">
-                    <Hash size={10} className="mr-1" /> {w}
-                  </p>
-                ))}
-                <p className="text-[#858585] italic">{safetyInfo.suggestions}</p>
-              </div>
-            </div>
+        {activeTab === 'settings' && (
+          <div className="flex-1 p-4 border-b border-[#333333]">
+             <h2 className="text-xs font-bold uppercase text-[#bbbbbb] tracking-wider flex items-center">
+              Configuration Active
+            </h2>
+            <p className="text-[10px] text-[#858585] mt-2 italic">Editing global application settings.</p>
           </div>
         )}
+      </div>
 
-        {/* Result Area */}
-        <div className="h-64 bg-[#1e1e1e] border-t border-[#1e1e1e]">
-          <ResultPanel result={queryResult} isLoading={isExecuting} />
-        </div>
+      <main className="flex-1 flex flex-col min-w-0">
+        {activeTab === 'settings' ? (
+          <SettingsPanel 
+            config={appConfig} 
+            onUpdate={(updates) => setAppConfig(prev => ({ ...prev, ...updates }))} 
+          />
+        ) : (
+          <>
+            <div className="h-12 bg-[#2d2d2d] flex items-center px-4 justify-between border-b border-[#1e1e1e]">
+              <div className="flex items-center space-x-3 overflow-hidden">
+                <input 
+                  value={snippetName}
+                  onChange={(e) => setSnippetName(e.target.value)}
+                  className="bg-transparent text-sm font-semibold text-[#cccccc] focus:outline-none focus:ring-1 focus:ring-[#007acc] px-2 py-1 rounded w-64"
+                  placeholder="Snippet Name..."
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={runQuery}
+                  disabled={isExecuting}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#007acc] hover:bg-[#118ad4] rounded text-white text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  <Play size={14} fill="currentColor" />
+                  <span>{isExecuting ? 'Running...' : 'Execute'}</span>
+                </button>
+                <button 
+                  onClick={saveSnippet}
+                  disabled={isSaving}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#3a3d41] hover:bg-[#45494e] rounded text-white text-xs font-medium transition-colors"
+                >
+                  <Save size={14} />
+                  <span>{isSaving ? 'Saving...' : 'Save & Tag'}</span>
+                </button>
+                <button 
+                  onClick={handleDeleteSnippet}
+                  className="p-1.5 text-[#858585] hover:text-[#f14c4c] transition-colors"
+                  title="Delete Snippet"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className={`transition-all duration-300 ${editorMinimized ? 'h-12' : 'flex-1'} bg-[#1e1e1e] flex flex-col relative`}>
+              <div className="absolute right-4 top-2 z-10 flex space-x-2">
+                <button 
+                  onClick={() => setEditorMinimized(!editorMinimized)}
+                  className="p-1 hover:bg-[#333333] rounded text-[#858585]"
+                >
+                  {editorMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+                </button>
+              </div>
+              
+              <textarea
+                className={`w-full h-full p-6 bg-[#1e1e1e] text-[#d4d4d4] code-font text-sm resize-none focus:outline-none focus:ring-1 focus:ring-inset focus:ring-[#007acc]/30 ${editorMinimized ? 'hidden' : 'block'}`}
+                spellCheck={false}
+                value={sqlCode}
+                onChange={(e) => setSqlCode(e.target.value)}
+              />
+              
+              {editorMinimized && (
+                <div className="flex items-center px-6 h-full text-xs text-[#858585] italic truncate">
+                  {sqlCode.substring(0, 100)}...
+                </div>
+              )}
+            </div>
+
+            {safetyInfo && (
+              <div className={`p-4 ${safetyInfo.isSafe ? 'bg-blue-900/10 border-blue-900/30' : 'bg-amber-900/10 border-amber-900/30'} border-t border-b`}>
+                <div className="flex items-start">
+                  {safetyInfo.isSafe ? (
+                    <Lightbulb size={18} className="text-blue-400 mt-1 mr-3 flex-shrink-0" />
+                  ) : (
+                    <ShieldAlert size={18} className="text-amber-400 mt-1 mr-3 flex-shrink-0" />
+                  )}
+                  <div className="text-xs">
+                    <p className="font-bold text-[#bbbbbb] mb-1">AI Safety Analysis</p>
+                    {safetyInfo.warnings.map((w, i) => (
+                      <p key={i} className="text-amber-400/90 mb-1 flex items-center">
+                        <Hash size={10} className="mr-1" /> {w}
+                      </p>
+                    ))}
+                    <p className="text-[#858585] italic">{safetyInfo.suggestions}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="h-64 bg-[#1e1e1e] border-t border-[#1e1e1e]">
+              <ResultPanel result={queryResult} isLoading={isExecuting} />
+            </div>
+          </>
+        )}
       </main>
 
-      {/* App Status Bar */}
       <div className="fixed bottom-0 left-0 right-0 h-6 bg-[#007acc] flex items-center px-3 justify-between text-[11px] text-white z-50">
         <div className="flex items-center space-x-4">
           <span className="flex items-center hover:bg-white/10 px-1 cursor-pointer">
@@ -338,7 +352,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center space-x-4">
           <span className="opacity-80">UTF-8</span>
-          <span className="opacity-80">SQL (AI Guided)</span>
+          <span className="opacity-80">SQL (AI: {appConfig.geminiModel})</span>
         </div>
       </div>
     </div>

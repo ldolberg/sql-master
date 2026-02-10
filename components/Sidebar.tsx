@@ -4,14 +4,13 @@ import {
   FolderIcon, 
   SearchIcon, 
   HistoryIcon, 
-  PlayIcon,
-  CodeIcon,
+  SettingsIcon,
   PlusIcon
 } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'files' | 'search' | 'history';
-  setActiveTab: (tab: 'files' | 'search' | 'history') => void;
+  activeTab: 'files' | 'search' | 'history' | 'settings';
+  setActiveTab: (tab: 'files' | 'search' | 'history' | 'settings') => void;
   onNewSnippet: () => void;
 }
 
@@ -40,15 +39,29 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onNewSnippet
           <span className="sr-only">{tab.label}</span>
         </button>
       ))}
-      <div className="mt-auto">
-        <button 
-          onClick={onNewSnippet}
-          className="p-2 text-[#858585] hover:text-white transition-colors"
-          title="New Snippet"
-        >
-          <PlusIcon size={24} />
-        </button>
-      </div>
+      
+      <div className="flex-1" />
+
+      <button 
+        onClick={onNewSnippet}
+        className="p-2 text-[#858585] hover:text-white transition-colors"
+        title="New Snippet"
+      >
+        <PlusIcon size={24} />
+      </button>
+
+      <button
+        onClick={() => setActiveTab('settings')}
+        title="Settings"
+        className={`p-2 transition-colors duration-200 relative group ${
+          activeTab === 'settings' ? 'text-white' : 'text-[#858585] hover:text-white'
+        }`}
+      >
+        {activeTab === 'settings' && (
+          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-white" />
+        )}
+        <SettingsIcon size={24} />
+      </button>
     </div>
   );
 };
