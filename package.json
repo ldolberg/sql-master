@@ -1,0 +1,60 @@
+
+{
+  "name": "sql-snippet-master",
+  "displayName": "SQL Snippet Master",
+  "description": "AI-powered SQL snippet management with safety guardrails and dbt export.",
+  "version": "1.2.0",
+  "publisher": "sql-master",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Data Science",
+    "Machine Learning"
+  ],
+  "main": "./extension.js",
+  "browser": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sql-snippet-master-sidebar",
+          "title": "SQL Master",
+          "icon": "database"
+        }
+      ]
+    },
+    "views": {
+      "sql-snippet-master-sidebar": [
+        {
+          "type": "webview",
+          "id": "sqlSnippetMasterView",
+          "name": "SQL Snippet Master"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc -p .",
+    "test": "tsx cli-test-runner.ts",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@google/genai": "^1.40.0",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3",
+    "@vscode/vsce": "^2.19.0"
+  }
+}
