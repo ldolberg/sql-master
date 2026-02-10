@@ -1,0 +1,5 @@
+{
+  "name": "SQL Snippet Master",
+  "description": "A VS Code-inspired SQL workspace for managing scattered snippets with AI-powered auto-tagging, semantic search, and safety guardrails.",
+  "requestFramePermissions": []
+}
