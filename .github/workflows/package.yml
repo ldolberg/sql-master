@@ -1,0 +1,38 @@
+name: Package Extension
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Compile and Package
+        run: npx vsce package --out sql-snippet-master.vsix
+        env:
+          # vsce might need some env vars if publishing, but for simple packaging it usually doesn't.
+          # We use npx to ensure we use the version in devDependencies.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload VSIX Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sql-snippet-master-vsix
+          path: sql-snippet-master.vsix
+          if-no-files-found: error
+
