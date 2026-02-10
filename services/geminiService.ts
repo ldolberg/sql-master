@@ -1,14 +1,15 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { SQLSnippet, SafetyCheck, LintResult } from "../types";
+import { SQLSnippet, SafetyCheck, LintResult, SqlDialect } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Always use a named parameter and obtain the API key directly from process.env.API_KEY
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const autoTagSnippet = async (code: string): Promise<{ tags: string[], category: string }> => {
+export const autoTagSnippet = async (code: string, dialect: SqlDialect): Promise<{ tags: string[], category: string }> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analyze this SQL snippet and provide relevant technical tags (e.g., table names, operations like SELECT/UPDATE, complexity) and a logical grouping category.\n\nSQL:\n${code}`,
+      contents: `Analyze this ${dialect} SQL snippet and provide relevant technical tags (e.g., table names, operations, complexity) and a logical grouping category.\n\nSQL:\n${code}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -28,10 +29,11 @@ export const autoTagSnippet = async (code: string): Promise<{ tags: string[], ca
       }
     });
 
+    // The .text property is a getter, not a method.
     return JSON.parse(response.text || '{"tags": [], "category": "General"}');
   } catch (error) {
     console.error("Auto-tagging failed", error);
-    return { tags: ["SQL"], category: "Uncategorized" };
+    return { tags: [dialect], category: "Uncategorized" };
   }
 };
 
@@ -57,11 +59,11 @@ export const semanticSearch = async (query: string, snippets: SQLSnippet[]): Pro
   }
 };
 
-export const checkSqlSafety = async (code: string): Promise<SafetyCheck> => {
+export const checkSqlSafety = async (code: string, dialect: SqlDialect): Promise<SafetyCheck> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analyze this SQL for risks (like missing WHERE in UPDATE/DELETE, dangerous DROP commands) and provide safety suggestions.\n\nSQL:\n${code}`,
+      contents: `Analyze this ${dialect} SQL for risks (like missing WHERE in UPDATE/DELETE, dangerous DROP commands, or dialect-specific hazards) and provide safety suggestions.\n\nSQL:\n${code}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -86,13 +88,13 @@ export const checkSqlSafety = async (code: string): Promise<SafetyCheck> => {
   }
 };
 
-export const generateDbtModel = async (name: string, sql: string): Promise<{ modelSql: string, schemaYaml: string }> => {
+export const generateDbtModel = async (name: string, sql: string, dialect: SqlDialect): Promise<{ modelSql: string, schemaYaml: string }> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Transform this SQL query into a production-ready dbt model. 
+      contents: `Transform this ${dialect} SQL query into a production-ready dbt model. 
       The model name is "${name}". 
-      1. Provide the .sql model file using Jinja best practices (e.g. config block, CTEs).
+      1. Provide the .sql model file using Jinja best practices (e.g. config block, CTEs). Use ${dialect} specific syntax where appropriate.
       2. Provide a corresponding schema.yml file with the model definition, column descriptions, and basic tests (unique, not_null).
       
       SQL Input:
@@ -117,14 +119,14 @@ export const generateDbtModel = async (name: string, sql: string): Promise<{ mod
   }
 };
 
-export const lintAndFormatSql = async (sql: string): Promise<LintResult> => {
+export const lintAndFormatSql = async (sql: string, dialect: SqlDialect): Promise<LintResult> => {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `You are a SQL expert. Perform the following on the input SQL:
-      1. Syntax check: Identify any invalid SQL syntax.
+      contents: `You are a ${dialect} SQL expert. Perform the following on the input SQL:
+      1. Syntax check: Identify any invalid ${dialect} SQL syntax.
       2. Linting: Provide suggestions for better style (keywords in uppercase, indentation, use of aliases).
-      3. Formatting: Provide a beautifully formatted version of the code.
+      3. Formatting: Provide a beautifully formatted version of the code respecting ${dialect} conventions.
       
       SQL:
       ${sql}`,

@@ -5,12 +5,13 @@ import {
   SearchIcon, 
   HistoryIcon, 
   SettingsIcon,
-  PlusIcon
+  PlusIcon,
+  FlaskConicalIcon
 } from 'lucide-react';
 
 interface SidebarProps {
-  activeTab: 'files' | 'search' | 'history' | 'settings';
-  setActiveTab: (tab: 'files' | 'search' | 'history' | 'settings') => void;
+  activeTab: 'files' | 'search' | 'history' | 'settings' | 'tests';
+  setActiveTab: (tab: 'files' | 'search' | 'history' | 'settings' | 'tests') => void;
   onNewSnippet: () => void;
 }
 
@@ -19,6 +20,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onNewSnippet
     { id: 'files', icon: FolderIcon, label: 'Snippets' },
     { id: 'search', icon: SearchIcon, label: 'Search' },
     { id: 'history', icon: HistoryIcon, label: 'Recent' },
+    { id: 'tests', icon: FlaskConicalIcon, label: 'Tests' },
   ] as const;
 
   return (

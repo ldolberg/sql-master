@@ -1,17 +1,17 @@
 
-import { QueryResult } from "../types";
+import { QueryResult, SqlDialect } from "../types";
 
-export const executeSql = async (sql: string): Promise<QueryResult> => {
+export const executeSql = async (sql: string, dialect: SqlDialect): Promise<QueryResult> => {
   // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 600));
 
   const lowerSql = sql.toLowerCase().trim();
   const startTime = performance.now();
 
-  // Mock responses based on keywords
+  // Mock responses based on keywords and dialect
   let columns: string[] = [];
   let rows: any[] = [];
-  let message = "Query executed successfully.";
+  let message = `Query executed successfully on ${dialect}.`;
 
   if (lowerSql.includes("select") && lowerSql.includes("user")) {
     columns = ["id", "username", "email", "created_at"];
@@ -29,10 +29,13 @@ export const executeSql = async (sql: string): Promise<QueryResult> => {
   } else if (lowerSql.startsWith("update") || lowerSql.startsWith("delete")) {
     columns = ["affected_rows"];
     rows = [{ affected_rows: Math.floor(Math.random() * 10) + 1 }];
-    message = "Modification applied.";
+    message = `Modification applied via ${dialect}.`;
+  } else if (dialect === 'BigQuery' && lowerSql.includes('dataset')) {
+    columns = ["dataset_id", "creation_time"];
+    rows = [{ dataset_id: "analytics_v1", creation_time: "2024-01-01T00:00:00Z" }];
   } else {
     columns = ["info"];
-    rows = [{ info: "Command acknowledged." }];
+    rows = [{ info: `Command acknowledged by ${dialect} engine.` }];
   }
 
   const endTime = performance.now();

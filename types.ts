@@ -1,4 +1,6 @@
 
+export type SqlDialect = 'PostgreSQL' | 'MySQL' | 'SQLite' | 'Snowflake' | 'BigQuery' | 'Redshift';
+
 export interface SQLSnippet {
   id: string;
   name: string;
@@ -44,4 +46,15 @@ export interface ExecutionHistory {
   code: string;
   timestamp: number;
   executionTime: number;
+}
+
+// Testing Types
+export interface TestCase {
+  id: string;
+  name: string;
+  description: string;
+  category: 'AI' | 'Execution' | 'Logic';
+  status: 'pending' | 'running' | 'passed' | 'failed';
+  error?: string;
+  duration?: number;
 }

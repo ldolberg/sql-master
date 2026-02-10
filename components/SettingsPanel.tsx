@@ -1,12 +1,14 @@
 
 import React, { useState } from 'react';
 import { ShieldCheck, Cpu, Database, Eye, EyeOff, Info } from 'lucide-react';
+import { SqlDialect } from '../types';
 
 interface SettingsPanelProps {
   config: {
     openaiKey: string;
     anthropicKey: string;
     geminiModel: string;
+    dialect: SqlDialect;
   };
   onUpdate: (updates: Partial<SettingsPanelProps['config']>) => void;
 }
@@ -17,6 +19,8 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate }) => {
   const toggleVisibility = (key: string) => {
     setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
   };
+
+  const dialects: SqlDialect[] = ['PostgreSQL', 'MySQL', 'SQLite', 'Snowflake', 'BigQuery', 'Redshift'];
 
   return (
     <div className="flex-1 bg-[#252526] p-6 overflow-y-auto">
@@ -109,11 +113,14 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate }) => {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <span className="text-[10px] text-[#858585]">Dialect</span>
-              <select className="w-full bg-[#3c3c3c] border border-transparent focus:border-[#007acc] rounded px-2 py-1 text-xs text-[#cccccc] outline-none">
-                <option>PostgreSQL</option>
-                <option>MySQL</option>
-                <option>SQLite</option>
-                <option>Snowflake</option>
+              <select 
+                value={config.dialect}
+                onChange={(e) => onUpdate({ dialect: e.target.value as SqlDialect })}
+                className="w-full bg-[#3c3c3c] border border-transparent focus:border-[#007acc] rounded px-2 py-1 text-xs text-[#cccccc] outline-none"
+              >
+                {dialects.map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
               </select>
             </div>
             <div className="space-y-1">

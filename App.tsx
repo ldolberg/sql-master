@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { SQLSnippet, QueryResult, SafetyCheck, LintResult, ExecutionHistory } from './types';
+import { SQLSnippet, QueryResult, SafetyCheck, LintResult, ExecutionHistory, SqlDialect } from './types';
 import Sidebar from './components/Sidebar';
 import SnippetExplorer from './components/SnippetExplorer';
 import ResultPanel from './components/ResultPanel';
 import SettingsPanel from './components/SettingsPanel';
 import DbtExportModal from './components/DbtExportModal';
+import TestDashboard from './components/TestDashboard';
 import { executeSql } from './services/sqlRunner';
 import { autoTagSnippet, checkSqlSafety, semanticSearch, generateDbtModel, lintAndFormatSql } from './services/geminiService';
 import { 
@@ -27,14 +28,15 @@ import {
   Terminal,
   Clock,
   ExternalLink,
-  RotateCw
+  RotateCw,
+  Beaker
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [snippets, setSnippets] = useState<SQLSnippet[]>([]);
   const [history, setHistory] = useState<ExecutionHistory[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'files' | 'search' | 'history' | 'settings'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'search' | 'history' | 'settings' | 'tests'>('files');
   const [sqlCode, setSqlCode] = useState('');
   const [snippetName, setSnippetName] = useState('');
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
@@ -57,7 +59,8 @@ const App: React.FC = () => {
   const [appConfig, setAppConfig] = useState({
     openaiKey: '',
     anthropicKey: '',
-    geminiModel: 'gemini-3-flash-preview'
+    geminiModel: 'gemini-3-flash-preview',
+    dialect: 'PostgreSQL' as SqlDialect
   });
 
   // Initialize with dummy data
@@ -98,7 +101,7 @@ const App: React.FC = () => {
       setSnippetName(snip.name);
       setSafetyInfo(null);
       setLintInfo(null);
-      if (activeTab === 'settings') setActiveTab('files');
+      if (activeTab === 'settings' || activeTab === 'tests') setActiveTab('files');
     }
   };
 
@@ -136,7 +139,7 @@ const App: React.FC = () => {
     if (!sqlCode.trim()) return;
     setIsLinting(true);
     try {
-      const result = await lintAndFormatSql(sqlCode);
+      const result = await lintAndFormatSql(sqlCode, appConfig.dialect);
       setLintInfo(result);
       if (result.formattedCode) {
         setSqlCode(result.formattedCode);
@@ -150,10 +153,10 @@ const App: React.FC = () => {
     if (!sqlCode.trim()) return;
     setIsExecuting(true);
     try {
-      const safety = await checkSqlSafety(sqlCode);
+      const safety = await checkSqlSafety(sqlCode, appConfig.dialect);
       setSafetyInfo(safety);
 
-      const result = await executeSql(sqlCode);
+      const result = await executeSql(sqlCode, appConfig.dialect);
       setQueryResult(result);
 
       // Add to History
@@ -185,7 +188,7 @@ const App: React.FC = () => {
     if (!activeId) return;
     setIsSaving(true);
     try {
-      const { tags, category } = await autoTagSnippet(sqlCode);
+      const { tags, category } = await autoTagSnippet(sqlCode, appConfig.dialect);
       setSnippets(prev => prev.map(s => 
         s.id === activeId 
           ? { ...s, name: snippetName, code: sqlCode, tags, category } 
@@ -201,7 +204,7 @@ const App: React.FC = () => {
     setShowDbtModal(true);
     setIsExportingDbt(true);
     try {
-      const dbtData = await generateDbtModel(snippetName || "Untitled Model", sqlCode);
+      const dbtData = await generateDbtModel(snippetName || "Untitled Model", sqlCode, appConfig.dialect);
       setDbtExportData(dbtData);
     } finally {
       setIsExportingDbt(false);
@@ -237,7 +240,6 @@ const App: React.FC = () => {
 
   const rerunFromHistory = (entry: ExecutionHistory) => {
     loadFromHistory(entry);
-    // Use setTimeout to ensure state updates before running
     setTimeout(() => {
       runQuery();
     }, 0);
@@ -325,11 +327,6 @@ const App: React.FC = () => {
                         <span className="flex items-center">
                           <Terminal size={10} className="mr-1" /> {entry.executionTime}ms
                         </span>
-                        {entry.snippetId && (
-                          <span className="flex items-center opacity-60">
-                            ID: {entry.snippetId.substring(0, 6)}...
-                          </span>
-                        )}
                       </div>
                       <code className="block text-[10px] text-[#6a9955] font-mono truncate mb-2 opacity-80 italic">
                         {entry.code.replace(/\s+/g, ' ')}
@@ -358,6 +355,8 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'tests' && <TestDashboard />}
+
         {activeTab === 'settings' && (
           <div className="flex-1 p-4 border-b border-[#333333]">
              <h2 className="text-xs font-bold uppercase text-[#bbbbbb] tracking-wider flex items-center">
@@ -374,6 +373,15 @@ const App: React.FC = () => {
             config={appConfig} 
             onUpdate={(updates) => setAppConfig(prev => ({ ...prev, ...updates }))} 
           />
+        ) : activeTab === 'tests' ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+             <Beaker size={64} className="text-[#007acc] mb-6 opacity-20" />
+             <h1 className="text-xl font-bold text-[#cccccc] mb-2">Test Suite Explorer</h1>
+             <p className="max-w-md text-sm text-[#858585]">
+               This environment allows you to run unit and integration tests for AI-powered features. 
+               Select a test in the explorer to see detailed assertions.
+             </p>
+          </div>
         ) : (
           <>
             <div className="h-12 bg-[#2d2d2d] flex items-center px-4 justify-between border-b border-[#1e1e1e]">
@@ -454,29 +462,15 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {/* Combined Linting & Safety Suggestions Panel */}
             {(lintInfo || safetyInfo) && (
               <div className="bg-[#252526] border-t border-[#1e1e1e] max-h-48 overflow-y-auto">
                 <div className="flex px-4 py-2 border-b border-[#333333] bg-[#2d2d2d] sticky top-0 z-10 items-center justify-between">
                   <span className="text-[10px] font-bold uppercase text-[#bbbbbb] tracking-widest flex items-center">
                     <Activity size={12} className="mr-2" /> AI Intelligence Panel
                   </span>
-                  <div className="flex gap-4">
-                    {lintInfo && (
-                      <span className={`text-[10px] font-bold ${lintInfo.errors.length > 0 ? 'text-[#f14c4c]' : 'text-green-400'}`}>
-                        {lintInfo.errors.length} Problems
-                      </span>
-                    )}
-                    {lintInfo && (
-                      <span className="text-[10px] font-bold text-blue-400">
-                        {lintInfo.suggestions.length} Style Suggestions
-                      </span>
-                    )}
-                  </div>
                 </div>
 
                 <div className="p-4 space-y-4">
-                  {/* Safety Warnings */}
                   {safetyInfo && !safetyInfo.isSafe && (
                     <div className="flex items-start">
                       <ShieldAlert size={14} className="text-amber-500 mt-0.5 mr-3 flex-shrink-0" />
@@ -489,7 +483,6 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Linting Errors */}
                   {lintInfo && lintInfo.errors.length > 0 && (
                     <div className="flex items-start">
                       <AlertCircle size={14} className="text-[#f14c4c] mt-0.5 mr-3 flex-shrink-0" />
@@ -502,7 +495,6 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Linting Suggestions */}
                   {lintInfo && lintInfo.suggestions.length > 0 && (
                     <div className="flex items-start">
                       <CheckCircle2 size={14} className="text-[#4ec9b0] mt-0.5 mr-3 flex-shrink-0" />
@@ -517,7 +509,6 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Safety Suggestions */}
                   {safetyInfo && safetyInfo.isSafe && (
                     <div className="flex items-start">
                       <Lightbulb size={14} className="text-blue-400 mt-0.5 mr-3 flex-shrink-0" />
@@ -538,7 +529,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* dbt Export Modal */}
       <DbtExportModal 
         isOpen={showDbtModal} 
         onClose={() => setShowDbtModal(false)} 
@@ -552,7 +542,7 @@ const App: React.FC = () => {
             <Activity size={12} className="mr-1" /> Master Branch
           </span>
           <span className="flex items-center hover:bg-white/10 px-1 cursor-pointer">
-            PostgreSQL Connected
+            {appConfig.dialect} Connected
           </span>
         </div>
         <div className="flex items-center space-x-4">
