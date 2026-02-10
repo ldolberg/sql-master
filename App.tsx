@@ -29,7 +29,10 @@ import {
   Clock,
   ExternalLink,
   RotateCw,
-  Beaker
+  Beaker,
+  ShieldCheck,
+  AlertTriangle,
+  ChevronRight
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -49,6 +52,10 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<SQLSnippet[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [editorMinimized, setEditorMinimized] = useState(false);
+  
+  // Safety Approval State
+  const [showSafetyApproval, setShowSafetyApproval] = useState(false);
+  const [isAnalyzingSafety, setIsAnalyzingSafety] = useState(false);
 
   // dbt Export State
   const [isExportingDbt, setIsExportingDbt] = useState(false);
@@ -101,6 +108,7 @@ const App: React.FC = () => {
       setSnippetName(snip.name);
       setSafetyInfo(null);
       setLintInfo(null);
+      setShowSafetyApproval(false);
       if (activeTab === 'settings' || activeTab === 'tests') setActiveTab('files');
     }
   };
@@ -123,6 +131,7 @@ const App: React.FC = () => {
     setSnippetName(newSnip.name);
     setSafetyInfo(null);
     setLintInfo(null);
+    setShowSafetyApproval(false);
     setActiveTab('files');
   };
 
@@ -133,6 +142,7 @@ const App: React.FC = () => {
     setSqlCode('');
     setSnippetName('');
     setLintInfo(null);
+    setShowSafetyApproval(false);
   };
 
   const handleLintAndFormat = async () => {
@@ -149,14 +159,42 @@ const App: React.FC = () => {
     }
   };
 
-  const runQuery = async () => {
-    if (!sqlCode.trim()) return;
-    setIsExecuting(true);
-    try {
-      const safety = await checkSqlSafety(sqlCode, appConfig.dialect);
-      setSafetyInfo(safety);
+  const isModificationQuery = (sql: string) => {
+    const trimmed = sql.trim().toUpperCase();
+    return trimmed.startsWith('UPDATE') || trimmed.startsWith('DELETE') || trimmed.startsWith('INSERT') || trimmed.startsWith('DROP') || trimmed.startsWith('TRUNCATE');
+  };
 
-      const result = await executeSql(sqlCode, appConfig.dialect);
+  const runQuery = async (skipSafetyCheck = false) => {
+    const code = sqlCode.trim();
+    if (!code) return;
+    
+    const isMod = isModificationQuery(code);
+
+    // Disable safety blocking for SELECTs
+    if (!skipSafetyCheck && isMod) {
+      setIsAnalyzingSafety(true);
+      try {
+        const safety = await checkSqlSafety(code, appConfig.dialect);
+        setSafetyInfo(safety);
+        
+        // If the query is not safe or has warnings, prompt the user for approval
+        if (!safety.isSafe || safety.warnings.length > 0) {
+          setShowSafetyApproval(true);
+          setIsAnalyzingSafety(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Safety check failed, proceeding with caution", err);
+      } finally {
+        setIsAnalyzingSafety(false);
+      }
+    }
+
+    // Actual execution
+    setIsExecuting(true);
+    setShowSafetyApproval(false);
+    try {
+      const result = await executeSql(code, appConfig.dialect);
       setQueryResult(result);
 
       // Add to History
@@ -164,7 +202,7 @@ const App: React.FC = () => {
         id: Math.random().toString(36).substr(2, 9),
         snippetId: activeId,
         name: snippetName || 'Ad-hoc Query',
-        code: sqlCode,
+        code: code,
         timestamp: Date.now(),
         executionTime: result.executionTime
       };
@@ -173,7 +211,7 @@ const App: React.FC = () => {
       if (activeId) {
         setSnippets(prev => prev.map(s => 
           s.id === activeId 
-            ? { ...s, usageCount: s.usageCount + 1, lastRunAt: Date.now(), code: sqlCode } 
+            ? { ...s, usageCount: s.usageCount + 1, lastRunAt: Date.now(), code: code } 
             : s
         ));
       }
@@ -236,6 +274,7 @@ const App: React.FC = () => {
     setQueryResult(null);
     setSafetyInfo(null);
     setLintInfo(null);
+    setShowSafetyApproval(false);
   };
 
   const rerunFromHistory = (entry: ExecutionHistory) => {
@@ -413,12 +452,12 @@ const App: React.FC = () => {
                   <span className="hidden md:inline">dbt</span>
                 </button>
                 <button 
-                  onClick={runQuery}
-                  disabled={isExecuting}
+                  onClick={() => runQuery()}
+                  disabled={isExecuting || isAnalyzingSafety}
                   className="flex items-center space-x-1.5 px-3 py-1.5 bg-[#007acc] hover:bg-[#118ad4] rounded text-white text-xs font-medium transition-colors disabled:opacity-50"
                 >
                   <Play size={14} fill="currentColor" />
-                  <span>{isExecuting ? 'Running...' : 'Execute'}</span>
+                  <span>{isExecuting ? 'Running...' : isAnalyzingSafety ? 'Checking Safety...' : 'Execute'}</span>
                 </button>
                 <button 
                   onClick={saveSnippet}
@@ -458,6 +497,58 @@ const App: React.FC = () => {
               {editorMinimized && (
                 <div className="flex items-center px-6 h-full text-xs text-[#858585] italic truncate">
                   {sqlCode.substring(0, 100)}...
+                </div>
+              )}
+
+              {/* Approval Overlay for Unsafe Modification Queries */}
+              {showSafetyApproval && (
+                <div className="absolute inset-0 z-50 bg-[#1e1e1e]/95 flex flex-col items-center justify-center p-8 backdrop-blur-md">
+                  <div className="max-w-md w-full bg-[#252526] border border-amber-500/50 rounded-lg shadow-2xl p-8 transform transition-all duration-300 scale-100">
+                    <div className="flex items-center space-x-3 text-amber-500 mb-6">
+                      <div className="p-3 bg-amber-500/10 rounded-full">
+                        <AlertTriangle size={32} />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold">Destructive Action Review</h3>
+                        <p className="text-[10px] text-[#858585] uppercase tracking-widest font-bold">Safety Guardrails Active</p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4 mb-8">
+                      <p className="text-sm text-[#cccccc] leading-relaxed">
+                        The AI engine has identified potential risks with this <span className="text-amber-500 font-bold uppercase">{sqlCode.trim().split(' ')[0]}</span> operation. Please review the findings before confirming:
+                      </p>
+                      <div className="bg-[#1a1a1b] border border-[#333333] rounded-md overflow-hidden">
+                        <div className="px-3 py-2 bg-[#2a2d2e] border-b border-[#333333] text-[10px] font-bold text-[#858585] flex items-center">
+                          <ShieldAlert size={12} className="mr-1.5" /> CRITICAL FINDINGS
+                        </div>
+                        <div className="p-4 space-y-3">
+                          {safetyInfo?.warnings.map((w, i) => (
+                            <div key={i} className="flex items-start space-x-3 text-xs text-[#d4d4d4]">
+                               <ChevronRight size={14} className="mt-0.5 text-amber-500 flex-shrink-0" />
+                               <span>{w}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col space-y-3">
+                      <button 
+                        onClick={() => runQuery(true)}
+                        className="w-full bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold py-3 rounded flex items-center justify-center space-x-2 transition-all shadow-lg active:scale-[0.98]"
+                      >
+                        <ShieldCheck size={18} />
+                        <span>I Understand, Run Modification</span>
+                      </button>
+                      <button 
+                        onClick={() => setShowSafetyApproval(false)}
+                        className="w-full bg-[#3a3d41] hover:bg-[#45494e] text-white text-sm font-bold py-2.5 rounded transition-colors"
+                      >
+                        Abort Operation
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

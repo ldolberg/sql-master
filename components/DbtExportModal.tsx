@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, Copy, Check, FileCode, FileText } from 'lucide-react';
+import { X, Copy, Check, FileCode, FileText, ShieldCheck } from 'lucide-react';
 
 interface DbtExportModalProps {
   isOpen: boolean;
@@ -12,10 +12,12 @@ interface DbtExportModalProps {
 const DbtExportModal: React.FC<DbtExportModalProps> = ({ isOpen, onClose, data, modelName }) => {
   const [activeTab, setActiveTab] = useState<'sql' | 'yml'>('sql');
   const [copied, setCopied] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
 
   if (!isOpen) return null;
 
   const handleCopy = () => {
+    if (!isApproved) return;
     const text = activeTab === 'sql' ? data?.modelSql : data?.schemaYaml;
     if (text) {
       navigator.clipboard.writeText(text);
@@ -36,14 +38,30 @@ const DbtExportModal: React.FC<DbtExportModalProps> = ({ isOpen, onClose, data, 
               <FileCode size={18} />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Export as dbt Model</h3>
-              <p className="text-[10px] text-[#858585]">Production-ready SQL & Schema configuration</p>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">Review & Approve dbt Model</h3>
+              <p className="text-[10px] text-[#858585]">Review AI-generated dbt clauses before export</p>
             </div>
           </div>
           <button onClick={onClose} className="text-[#858585] hover:text-white transition-colors">
             <X size={20} />
           </button>
         </div>
+
+        {/* Approval Banner */}
+        {!isApproved && data && (
+          <div className="bg-blue-500/10 border-b border-blue-500/20 px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center space-x-2 text-blue-400 text-[11px]">
+              <ShieldCheck size={14} />
+              <span>Please review the generated code carefully before approving for use in your project.</span>
+            </div>
+            <button 
+              onClick={() => setIsApproved(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1 rounded transition-colors"
+            >
+              Approve Clauses
+            </button>
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 flex flex-col min-h-0 bg-[#1e1e1e]">
@@ -72,15 +90,18 @@ const DbtExportModal: React.FC<DbtExportModalProps> = ({ isOpen, onClose, data, 
             
             <button
               onClick={handleCopy}
-              className="flex items-center space-x-1.5 px-3 py-1 text-[10px] bg-[#3a3d41] hover:bg-[#45494e] text-white rounded transition-colors"
+              disabled={!isApproved}
+              className={`flex items-center space-x-1.5 px-3 py-1 text-[10px] rounded transition-colors ${
+                isApproved ? 'bg-[#3a3d41] hover:bg-[#45494e] text-white cursor-pointer' : 'bg-[#333333] text-[#666666] cursor-not-allowed'
+              }`}
             >
               {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-              <span>{copied ? 'Copied' : 'Copy'}</span>
+              <span>{copied ? 'Copied' : isApproved ? 'Copy' : 'Approval Required'}</span>
             </button>
           </div>
 
           {/* Code Body */}
-          <div className="flex-1 overflow-auto p-6 font-mono text-sm leading-relaxed">
+          <div className={`flex-1 overflow-auto p-6 font-mono text-sm leading-relaxed ${!isApproved ? 'opacity-50 select-none' : ''}`}>
             {data ? (
               <pre className="text-[#d4d4d4] whitespace-pre-wrap break-words">
                 {activeTab === 'sql' ? data.modelSql : data.schemaYaml}
@@ -99,14 +120,25 @@ const DbtExportModal: React.FC<DbtExportModalProps> = ({ isOpen, onClose, data, 
         {/* Footer */}
         <div className="px-6 py-3 bg-[#2d2d2d] border-t border-[#333333] flex justify-between items-center">
           <p className="text-[10px] text-[#858585]">
-            <span className="text-[#007acc] font-bold">Pro Tip:</span> dbt models use CTEs and modular YAML files for better maintainability.
+            <span className="text-[#007acc] font-bold">Pro Tip:</span> Models use Jinja templates and logic generated based on your source query.
           </p>
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-xs font-medium bg-[#007acc] hover:bg-[#118ad4] text-white rounded transition-colors shadow-lg"
-          >
-            Done
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 text-xs font-medium bg-[#3a3d41] hover:bg-[#45494e] text-white rounded transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (isApproved) onClose();
+                else setIsApproved(true);
+              }}
+              className="px-4 py-1.5 text-xs font-medium bg-[#007acc] hover:bg-[#118ad4] text-white rounded transition-colors shadow-lg"
+            >
+              {isApproved ? 'Done' : 'Review & Approve'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
