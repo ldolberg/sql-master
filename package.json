@@ -36,8 +36,9 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run build",
+    "vscode:prepublish": "npm run build && npm run build:webview",
     "build": "tsc -p .",
+    "build:webview": "vite build",
     "test": "tsx cli-test-runner.ts",
     "package": "vsce package"
   },

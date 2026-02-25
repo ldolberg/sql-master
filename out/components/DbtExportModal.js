@@ -1,0 +1,28 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { useState } from 'react';
+import { X, Copy, Check, FileCode, FileText, ShieldCheck } from 'lucide-react';
+const DbtExportModal = ({ isOpen, onClose, data, modelName }) => {
+    const [activeTab, setActiveTab] = useState('sql');
+    const [copied, setCopied] = useState(false);
+    const [isApproved, setIsApproved] = useState(false);
+    if (!isOpen)
+        return null;
+    const handleCopy = () => {
+        if (!isApproved)
+            return;
+        const text = activeTab === 'sql' ? data?.modelSql : data?.schemaYaml;
+        if (text) {
+            navigator.clipboard.writeText(text);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+    const fileName = activeTab === 'sql' ? `${modelName.toLowerCase().replace(/\s+/g, '_')}.sql` : 'schema.yml';
+    return (_jsx("div", { className: "fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm", children: _jsxs("div", { className: "bg-[#252526] w-full max-w-4xl max-h-[85vh] rounded-lg shadow-2xl flex flex-col border border-[#333333] overflow-hidden", children: [_jsxs("div", { className: "flex items-center justify-between px-6 py-4 border-b border-[#333333] bg-[#2d2d2d]", children: [_jsxs("div", { className: "flex items-center space-x-2", children: [_jsx("div", { className: "bg-[#ff694b] p-1.5 rounded text-white", children: _jsx(FileCode, { size: 18 }) }), _jsxs("div", { children: [_jsx("h3", { className: "text-sm font-bold text-white uppercase tracking-wider", children: "Review & Approve dbt Model" }), _jsx("p", { className: "text-[10px] text-[#858585]", children: "Review AI-generated dbt clauses before export" })] })] }), _jsx("button", { onClick: onClose, className: "text-[#858585] hover:text-white transition-colors", children: _jsx(X, { size: 20 }) })] }), !isApproved && data && (_jsxs("div", { className: "bg-blue-500/10 border-b border-blue-500/20 px-6 py-3 flex items-center justify-between", children: [_jsxs("div", { className: "flex items-center space-x-2 text-blue-400 text-[11px]", children: [_jsx(ShieldCheck, { size: 14 }), _jsx("span", { children: "Please review the generated code carefully before approving for use in your project." })] }), _jsx("button", { onClick: () => setIsApproved(true), className: "bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-3 py-1 rounded transition-colors", children: "Approve Clauses" })] })), _jsxs("div", { className: "flex-1 flex flex-col min-h-0 bg-[#1e1e1e]", children: [_jsxs("div", { className: "flex items-center px-4 bg-[#252526] border-b border-[#333333]", children: [_jsxs("button", { onClick: () => setActiveTab('sql'), className: `px-4 py-2.5 text-xs font-medium border-b-2 transition-colors flex items-center space-x-2 ${activeTab === 'sql' ? 'border-[#007acc] text-white bg-[#1e1e1e]' : 'border-transparent text-[#858585] hover:text-[#cccccc]'}`, children: [_jsx(FileCode, { size: 14 }), _jsxs("span", { children: [modelName.toLowerCase().replace(/\s+/g, '_'), ".sql"] })] }), _jsxs("button", { onClick: () => setActiveTab('yml'), className: `px-4 py-2.5 text-xs font-medium border-b-2 transition-colors flex items-center space-x-2 ${activeTab === 'yml' ? 'border-[#007acc] text-white bg-[#1e1e1e]' : 'border-transparent text-[#858585] hover:text-[#cccccc]'}`, children: [_jsx(FileText, { size: 14 }), _jsx("span", { children: "schema.yml" })] }), _jsx("div", { className: "flex-1" }), _jsxs("button", { onClick: handleCopy, disabled: !isApproved, className: `flex items-center space-x-1.5 px-3 py-1 text-[10px] rounded transition-colors ${isApproved ? 'bg-[#3a3d41] hover:bg-[#45494e] text-white cursor-pointer' : 'bg-[#333333] text-[#666666] cursor-not-allowed'}`, children: [copied ? _jsx(Check, { size: 12, className: "text-green-500" }) : _jsx(Copy, { size: 12 }), _jsx("span", { children: copied ? 'Copied' : isApproved ? 'Copy' : 'Approval Required' })] })] }), _jsx("div", { className: `flex-1 overflow-auto p-6 font-mono text-sm leading-relaxed ${!isApproved ? 'opacity-50 select-none' : ''}`, children: data ? (_jsx("pre", { className: "text-[#d4d4d4] whitespace-pre-wrap break-words", children: activeTab === 'sql' ? data.modelSql : data.schemaYaml })) : (_jsx("div", { className: "h-full flex items-center justify-center text-[#858585]", children: _jsxs("div", { className: "animate-pulse flex flex-col items-center", children: [_jsx("div", { className: "w-12 h-1 bg-[#007acc] rounded mb-4" }), "Generating dbt files..."] }) })) })] }), _jsxs("div", { className: "px-6 py-3 bg-[#2d2d2d] border-t border-[#333333] flex justify-between items-center", children: [_jsxs("p", { className: "text-[10px] text-[#858585]", children: [_jsx("span", { className: "text-[#007acc] font-bold", children: "Pro Tip:" }), " Models use Jinja templates and logic generated based on your source query."] }), _jsxs("div", { className: "flex space-x-2", children: [_jsx("button", { onClick: onClose, className: "px-4 py-1.5 text-xs font-medium bg-[#3a3d41] hover:bg-[#45494e] text-white rounded transition-colors", children: "Cancel" }), _jsx("button", { onClick: () => {
+                                        if (isApproved)
+                                            onClose();
+                                        else
+                                            setIsApproved(true);
+                                    }, className: "px-4 py-1.5 text-xs font-medium bg-[#007acc] hover:bg-[#118ad4] text-white rounded transition-colors shadow-lg", children: isApproved ? 'Done' : 'Review & Approve' })] })] })] }) }));
+};
+export default DbtExportModal;

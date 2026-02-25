@@ -18,6 +18,17 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      build: {
+        outDir: 'dist',
+        emptyOutDir: true,
+        rollupOptions: {
+          input: path.resolve(__dirname, 'index.tsx'),
+          output: {
+            entryFileNames: 'index.js',
+            inlineDynamicImports: true,
+          },
+        },
+      },
     };
 });

@@ -10,7 +10,7 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Copy source and build
 COPY . .
-RUN npm run build
+RUN npm run build && npm run build:webview
 
 # Install vsce globally for packaging
 RUN npm install -g @vscode/vsce

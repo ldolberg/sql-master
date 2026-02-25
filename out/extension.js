@@ -1,38 +1,26 @@
-
 import * as vscode from 'vscode';
-
 /**
- * Activates the extension. 
+ * Activates the extension.
  * This is the entry point for VS Code.
  */
-export function activate(context: vscode.ExtensionContext) {
+export function activate(context) {
     const provider = new SqlSnippetMasterProvider(context.extensionUri);
-
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider('sqlSnippetMasterView', provider)
-    );
-
+    context.subscriptions.push(vscode.window.registerWebviewViewProvider('sqlSnippetMasterView', provider));
     console.log('SQL Snippet Master is now active.');
 }
-
 /**
  * Provider for the SQL Snippet Master sidebar view.
  */
-class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
-    constructor(private readonly _extensionUri: vscode.Uri) {}
-
-    public resolveWebviewView(
-        webviewView: vscode.WebviewView,
-        _context: vscode.WebviewViewResolveContext,
-        _token: vscode.CancellationToken,
-    ) {
+class SqlSnippetMasterProvider {
+    constructor(_extensionUri) {
+        this._extensionUri = _extensionUri;
+    }
+    resolveWebviewView(webviewView, _context, _token) {
         webviewView.webview.options = {
             enableScripts: true,
             localResourceRoots: [this._extensionUri, vscode.Uri.joinPath(this._extensionUri, 'dist')]
         };
-
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
-
         // Handle messages from the webview
         webviewView.webview.onDidReceiveMessage(data => {
             switch (data.type) {
@@ -45,8 +33,7 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             }
         });
     }
-
-    private _getHtmlForWebview(webview: vscode.Webview) {
+    _getHtmlForWebview(webview) {
         // In a real extension build, this would read index.html from disk.
         // For the purpose of this ESM-based demo, we serve a standard shell
         // that initializes the React application.
@@ -92,5 +79,4 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
         `;
     }
 }
-
-export function deactivate() {}
+export function deactivate() { }
