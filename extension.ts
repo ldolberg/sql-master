@@ -39,12 +39,12 @@ function isDestructiveWithoutWhere(sql: string): boolean {
     return isDestructive && !lower.includes('where');
 }
 
-function runMockSql(sql: string): MockQueryResult {
+function runMockSql(sql: string, dialect: string = 'PostgreSQL'): MockQueryResult {
     const start = Date.now();
     const lower = sql.toLowerCase().trim();
     let columns: string[] = [];
     let rows: Record<string, unknown>[] = [];
-    let message = 'Query executed successfully.';
+    let message = `Query executed successfully on ${dialect}.`;
 
     if (lower.includes('select') && lower.includes('user')) {
         columns = ['id', 'username', 'email', 'created_at'];
@@ -60,14 +60,19 @@ function runMockSql(sql: string): MockQueryResult {
     } else if (lower.startsWith('update') || lower.startsWith('delete')) {
         columns = ['affected_rows'];
         rows = [{ affected_rows: Math.floor(Math.random() * 10) + 1 }];
-        message = 'Modification applied.';
+        message = `Modification applied via ${dialect}.`;
     } else {
         columns = ['info'];
-        rows = [{ info: 'Command acknowledged.' }];
+        rows = [{ info: `Command acknowledged by ${dialect} engine.` }];
     }
 
     const executionTime = Date.now() - start;
     return { columns, rows, executionTime, status: 'success', message };
+}
+
+function getDialect(): string {
+    const config = vscode.workspace.getConfiguration('sqlSnippetMaster');
+    return config.get<string>('dialect') || 'PostgreSQL';
 }
 
 const SNIPPETS_KEY = 'sqlSnippetMaster.snippets';
@@ -127,7 +132,8 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                     });
                     return;
                 }
-                const result = runMockSql(data.sql);
+                const dialect = getDialect();
+                const result = runMockSql(data.sql, dialect);
                 webviewView.webview.postMessage({
                     type: 'runResult',
                     columns: result.columns,
@@ -139,7 +145,8 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                 return;
             }
             if (data.type === 'runSqlForce' && typeof data.sql === 'string') {
-                const result = runMockSql(data.sql);
+                const dialect = getDialect();
+                const result = runMockSql(data.sql, dialect);
                 webviewView.webview.postMessage({
                     type: 'runResult',
                     columns: result.columns,

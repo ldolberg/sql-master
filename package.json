@@ -9,6 +9,22 @@
   "main": "./out/extension.js",
   "activationEvents": [],
   "contributes": {
+    "configuration": {
+      "title": "SQL Snippet Master",
+      "properties": {
+        "sqlSnippetMaster.dialect": {
+          "type": "string",
+          "enum": ["PostgreSQL", "MySQL", "SQLite", "Snowflake", "BigQuery", "Redshift"],
+          "default": "PostgreSQL",
+          "description": "SQL dialect for mock runner and AI."
+        },
+        "sqlSnippetMaster.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Gemini API key for AI features."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
