@@ -13,6 +13,45 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {}
 
+interface MockQueryResult {
+    columns: string[];
+    rows: Record<string, unknown>[];
+    executionTime: number;
+    status: 'success' | 'error';
+    message: string;
+}
+
+function runMockSql(sql: string): MockQueryResult {
+    const start = Date.now();
+    const lower = sql.toLowerCase().trim();
+    let columns: string[] = [];
+    let rows: Record<string, unknown>[] = [];
+    let message = 'Query executed successfully.';
+
+    if (lower.includes('select') && lower.includes('user')) {
+        columns = ['id', 'username', 'email', 'created_at'];
+        rows = [
+            { id: 1, username: 'jdoe', email: 'john@example.com', created_at: '2023-01-01' },
+            { id: 2, username: 'asmith', email: 'alice@example.com', created_at: '2023-01-05' },
+        ];
+    } else if (lower.includes('select') && lower.includes('client')) {
+        columns = ['client_id', 'name', 'plan', 'status'];
+        rows = [
+            { client_id: 'C-001', name: 'Global Corp', plan: 'Enterprise', status: 'Active' },
+        ];
+    } else if (lower.startsWith('update') || lower.startsWith('delete')) {
+        columns = ['affected_rows'];
+        rows = [{ affected_rows: Math.floor(Math.random() * 10) + 1 }];
+        message = 'Modification applied.';
+    } else {
+        columns = ['info'];
+        rows = [{ info: 'Command acknowledged.' }];
+    }
+
+    const executionTime = Date.now() - start;
+    return { columns, rows, executionTime, status: 'success', message };
+}
+
 class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -27,6 +66,20 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
         };
 
         webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
+
+        webviewView.webview.onDidReceiveMessage((data: { type: string; sql?: string }) => {
+            if (data.type === 'runSql' && typeof data.sql === 'string') {
+                const result = runMockSql(data.sql);
+                webviewView.webview.postMessage({
+                    type: 'runResult',
+                    columns: result.columns,
+                    rows: result.rows,
+                    executionTime: result.executionTime,
+                    status: result.status,
+                    message: result.message,
+                });
+            }
+        });
     }
 
     private getHtmlForWebview(webview: vscode.Webview): string {
@@ -101,11 +154,35 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
     </div>
     <script>
         (function() {
+            var vscode = acquireVsCodeApi();
             var editor = document.getElementById('sql-editor');
             var runBtn = document.getElementById('run-btn');
             var results = document.getElementById('results');
             runBtn.addEventListener('click', function() {
-                results.textContent = 'Run not connected yet. (Phase 3 will connect.)';
+                var sql = editor.value.trim();
+                results.textContent = 'Running...';
+                runBtn.disabled = true;
+                vscode.postMessage({ type: 'runSql', sql: sql || 'SELECT 1' });
+            });
+            window.addEventListener('message', function(e) {
+                var msg = e.data;
+                if (msg.type !== 'runResult') return;
+                runBtn.disabled = false;
+                var cols = msg.columns || [];
+                var rows = msg.rows || [];
+                var time = msg.executionTime || 0;
+                var status = msg.message || '';
+                if (rows.length === 0) {
+                    results.textContent = status + ' (' + time + ' ms)';
+                    return;
+                }
+                var lines = [status + ' (' + time + ' ms)', ''];
+                lines.push(cols.join(' | '));
+                lines.push(cols.map(function() { return '---'; }).join('-'));
+                rows.forEach(function(r) {
+                    lines.push(cols.map(function(c) { return String(r[c] != null ? r[c] : ''); }).join(' | '));
+                });
+                results.textContent = lines.join('\\n');
             });
         })();
     </script>
