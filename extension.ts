@@ -33,6 +33,12 @@ const DEFAULT_SNIPPETS: Snippet[] = [
     { id: '3', name: 'Count', code: 'SELECT COUNT(*) AS total FROM user;', tags: ['aggregate'] },
 ];
 
+function isDestructiveWithoutWhere(sql: string): boolean {
+    const lower = sql.toLowerCase().trim();
+    const isDestructive = lower.startsWith('update') || lower.startsWith('delete');
+    return isDestructive && !lower.includes('where');
+}
+
 function runMockSql(sql: string): MockQueryResult {
     const start = Date.now();
     const lower = sql.toLowerCase().trim();
@@ -113,6 +119,26 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             name?: string; code?: string; tags?: string[];
         }) => {
             if (data.type === 'runSql' && typeof data.sql === 'string') {
+                if (isDestructiveWithoutWhere(data.sql)) {
+                    webviewView.webview.postMessage({
+                        type: 'runConfirm',
+                        sql: data.sql,
+                        message: 'UPDATE/DELETE without WHERE can affect many rows. Run anyway?',
+                    });
+                    return;
+                }
+                const result = runMockSql(data.sql);
+                webviewView.webview.postMessage({
+                    type: 'runResult',
+                    columns: result.columns,
+                    rows: result.rows,
+                    executionTime: result.executionTime,
+                    status: result.status,
+                    message: result.message,
+                });
+                return;
+            }
+            if (data.type === 'runSqlForce' && typeof data.sql === 'string') {
                 const result = runMockSql(data.sql);
                 webviewView.webview.postMessage({
                     type: 'runResult',
@@ -274,6 +300,13 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
     <div class="results-wrap">
         <label>Results</label>
         <pre id="results">No results yet.</pre>
+        <div id="confirm-wrap" style="display:none; margin-top: 8px;">
+            <p id="confirm-msg"></p>
+            <div class="btn-row">
+                <button type="button" id="run-anyway-btn" class="danger">Run anyway</button>
+                <button type="button" id="confirm-cancel-btn" class="secondary">Cancel</button>
+            </div>
+        </div>
     </div>
     <script>
         (function() {
@@ -289,11 +322,29 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             var deleteBtn = document.getElementById('delete-btn');
             var currentSnippetId = null;
             vscode.postMessage({ type: 'getSnippetList' });
+            var confirmWrap = document.getElementById('confirm-wrap');
+            var confirmMsg = document.getElementById('confirm-msg');
+            var runAnywayBtn = document.getElementById('run-anyway-btn');
+            var confirmCancelBtn = document.getElementById('confirm-cancel-btn');
+            var pendingSql = null;
             runBtn.addEventListener('click', function() {
                 var sql = editor.value.trim();
                 results.textContent = 'Running...';
+                confirmWrap.style.display = 'none';
                 runBtn.disabled = true;
                 vscode.postMessage({ type: 'runSql', sql: sql || 'SELECT 1' });
+            });
+            runAnywayBtn.addEventListener('click', function() {
+                if (!pendingSql) return;
+                confirmWrap.style.display = 'none';
+                results.textContent = 'Running...';
+                vscode.postMessage({ type: 'runSqlForce', sql: pendingSql });
+                pendingSql = null;
+            });
+            confirmCancelBtn.addEventListener('click', function() {
+                confirmWrap.style.display = 'none';
+                pendingSql = null;
+                results.textContent = 'Cancelled.';
             });
             function tagsArray() {
                 var t = (tagsInput.value || '').trim();
@@ -336,8 +387,18 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                     editor.value = msg.code || '';
                     return;
                 }
+                if (msg.type === 'runConfirm') {
+                    runBtn.disabled = false;
+                    pendingSql = msg.sql;
+                    confirmMsg.textContent = msg.message || 'Run this query anyway?';
+                    confirmWrap.style.display = 'block';
+                    results.textContent = 'Destructive query detected.';
+                    return;
+                }
                 if (msg.type !== 'runResult') return;
                 runBtn.disabled = false;
+                confirmWrap.style.display = 'none';
+                pendingSql = null;
                 var cols = msg.columns || [];
                 var rows = msg.rows || [];
                 var time = msg.executionTime || 0;
