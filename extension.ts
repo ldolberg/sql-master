@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
-    const extensionUri = context.extensionUri;
-    const provider = new SqlSnippetMasterProvider(extensionUri);
+    const provider = new SqlSnippetMasterProvider(context);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('sqlSnippetMasterView', provider)
@@ -65,22 +64,42 @@ function runMockSql(sql: string): MockQueryResult {
     return { columns, rows, executionTime, status: 'success', message };
 }
 
-class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
-    private _snippets: Snippet[] = [...DEFAULT_SNIPPETS];
+const SNIPPETS_KEY = 'sqlSnippetMaster.snippets';
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
+    private _snippets: Snippet[] = [];
+    private _loaded = false;
+
+    constructor(private readonly _context: vscode.ExtensionContext) {}
+
+    private loadSnippets(): void {
+        if (this._loaded) return;
+        this._loaded = true;
+        const stored = this._context.globalState.get<Snippet[]>(SNIPPETS_KEY);
+        if (stored && Array.isArray(stored) && stored.length > 0) {
+            this._snippets = stored;
+        } else {
+            this._snippets = [...DEFAULT_SNIPPETS];
+            this.persistSnippets();
+        }
+    }
+
+    private persistSnippets(): void {
+        void this._context.globalState.update(SNIPPETS_KEY, this._snippets);
+    }
 
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ): void {
+        this.loadSnippets();
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri],
+            localResourceRoots: [this._context.extensionUri],
         };
 
-        webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
+        webviewView.webview.html = this.getHtmlForWebview(webviewView.webview, this._context.extensionUri);
 
         webviewView.webview.onDidReceiveMessage((data: { type: string; sql?: string; id?: string }) => {
             if (data.type === 'runSql' && typeof data.sql === 'string') {
@@ -117,7 +136,7 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
         });
     }
 
-    private getHtmlForWebview(webview: vscode.Webview): string {
+    private getHtmlForWebview(webview: vscode.Webview, _extensionUri: vscode.Uri): string {
         const csp = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};`;
         return `<!DOCTYPE html>
 <html lang="en">
