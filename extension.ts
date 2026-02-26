@@ -88,6 +88,13 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
         void this._context.globalState.update(SNIPPETS_KEY, this._snippets);
     }
 
+    private sendSnippetList(webview: vscode.Webview): void {
+        webview.postMessage({
+            type: 'snippetList',
+            snippets: this._snippets.map((s) => ({ id: s.id, name: s.name, tags: s.tags })),
+        });
+    }
+
     resolveWebviewView(
         webviewView: vscode.WebviewView,
         _context: vscode.WebviewViewResolveContext,
@@ -101,7 +108,10 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtmlForWebview(webviewView.webview, this._context.extensionUri);
 
-        webviewView.webview.onDidReceiveMessage((data: { type: string; sql?: string; id?: string }) => {
+        webviewView.webview.onDidReceiveMessage((data: {
+            type: string; sql?: string; id?: string;
+            name?: string; code?: string; tags?: string[];
+        }) => {
             if (data.type === 'runSql' && typeof data.sql === 'string') {
                 const result = runMockSql(data.sql);
                 webviewView.webview.postMessage({
@@ -115,10 +125,7 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                 return;
             }
             if (data.type === 'getSnippetList') {
-                webviewView.webview.postMessage({
-                    type: 'snippetList',
-                    snippets: this._snippets.map((s) => ({ id: s.id, name: s.name, tags: s.tags })),
-                });
+                this.sendSnippetList(webviewView.webview);
                 return;
             }
             if (data.type === 'loadSnippet' && typeof data.id === 'string') {
@@ -132,6 +139,36 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                         tags: snip.tags,
                     });
                 }
+                return;
+            }
+            if (data.type === 'addSnippet' && typeof data.name === 'string' && typeof data.code === 'string') {
+                const tags = Array.isArray(data.tags) ? data.tags : [];
+                const newSnip: Snippet = {
+                    id: Date.now().toString(),
+                    name: data.name.trim() || 'Untitled',
+                    code: data.code,
+                    tags,
+                };
+                this._snippets.push(newSnip);
+                this.persistSnippets();
+                this.sendSnippetList(webviewView.webview);
+                return;
+            }
+            if (data.type === 'updateSnippet' && typeof data.id === 'string') {
+                const idx = this._snippets.findIndex((s) => s.id === data.id);
+                if (idx >= 0) {
+                    if (typeof data.name === 'string') this._snippets[idx].name = data.name.trim() || 'Untitled';
+                    if (typeof data.code === 'string') this._snippets[idx].code = data.code;
+                    if (Array.isArray(data.tags)) this._snippets[idx].tags = data.tags;
+                    this.persistSnippets();
+                    this.sendSnippetList(webviewView.webview);
+                }
+                return;
+            }
+            if (data.type === 'deleteSnippet' && typeof data.id === 'string') {
+                this._snippets = this._snippets.filter((s) => s.id !== data.id);
+                this.persistSnippets();
+                this.sendSnippetList(webviewView.webview);
             }
         });
     }
@@ -202,6 +239,14 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             font-size: 0.9em;
         }
         #snippet-list li:hover { background: var(--vscode-list-hoverBackground); }
+        .snippet-form { margin-bottom: 10px; }
+        .snippet-form label { display: block; margin-bottom: 2px; font-size: 0.85em; opacity: 0.9; }
+        .snippet-form input { width: 100%; padding: 4px 8px; margin-bottom: 6px; box-sizing: border-box; font-size: 0.9em; }
+        .btn-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+        .btn-row button { padding: 4px 10px; font-size: 0.85em; cursor: pointer; border-radius: 4px; border: none; }
+        .btn-row .primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+        .btn-row .secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+        .btn-row .danger { background: var(--vscode-errorForeground); color: var(--vscode-editor-background); }
     </style>
 </head>
 <body>
@@ -209,6 +254,17 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
     <div class="snippets-wrap">
         <label>Snippets</label>
         <ul id="snippet-list"></ul>
+    </div>
+    <div class="snippet-form">
+        <label for="snippet-name">Name</label>
+        <input type="text" id="snippet-name" placeholder="Snippet name">
+        <label for="snippet-tags">Tags (comma-separated)</label>
+        <input type="text" id="snippet-tags" placeholder="tag1, tag2">
+    </div>
+    <div class="btn-row">
+        <button type="button" id="save-new-btn" class="primary">Save as new</button>
+        <button type="button" id="update-btn" class="secondary">Update</button>
+        <button type="button" id="delete-btn" class="danger">Delete</button>
     </div>
     <div class="editor-wrap">
         <label for="sql-editor">SQL</label>
@@ -226,12 +282,38 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             var runBtn = document.getElementById('run-btn');
             var results = document.getElementById('results');
             var snippetList = document.getElementById('snippet-list');
+            var nameInput = document.getElementById('snippet-name');
+            var tagsInput = document.getElementById('snippet-tags');
+            var saveNewBtn = document.getElementById('save-new-btn');
+            var updateBtn = document.getElementById('update-btn');
+            var deleteBtn = document.getElementById('delete-btn');
+            var currentSnippetId = null;
             vscode.postMessage({ type: 'getSnippetList' });
             runBtn.addEventListener('click', function() {
                 var sql = editor.value.trim();
                 results.textContent = 'Running...';
                 runBtn.disabled = true;
                 vscode.postMessage({ type: 'runSql', sql: sql || 'SELECT 1' });
+            });
+            function tagsArray() {
+                var t = (tagsInput.value || '').trim();
+                return t ? t.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+            }
+            saveNewBtn.addEventListener('click', function() {
+                var name = (nameInput.value || '').trim() || 'Untitled';
+                vscode.postMessage({ type: 'addSnippet', name: name, code: editor.value, tags: tagsArray() });
+            });
+            updateBtn.addEventListener('click', function() {
+                if (!currentSnippetId) return;
+                vscode.postMessage({ type: 'updateSnippet', id: currentSnippetId, name: nameInput.value, code: editor.value, tags: tagsArray() });
+            });
+            deleteBtn.addEventListener('click', function() {
+                if (!currentSnippetId) return;
+                vscode.postMessage({ type: 'deleteSnippet', id: currentSnippetId });
+                currentSnippetId = null;
+                nameInput.value = '';
+                tagsInput.value = '';
+                editor.value = '';
             });
             window.addEventListener('message', function(e) {
                 var msg = e.data;
@@ -248,6 +330,9 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                     return;
                 }
                 if (msg.type === 'snippet') {
+                    currentSnippetId = msg.id;
+                    nameInput.value = msg.name || '';
+                    tagsInput.value = (msg.tags || []).join(', ');
                     editor.value = msg.code || '';
                     return;
                 }
