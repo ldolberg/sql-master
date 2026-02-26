@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Copy, Check, FileCode, FileText, ShieldCheck } from 'lucide-react';
 
 interface DbtExportModalProps {
@@ -14,13 +14,21 @@ const DbtExportModal: React.FC<DbtExportModalProps> = ({ isOpen, onClose, data, 
   const [copied, setCopied] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      setIsApproved(false);
+      setCopied(false);
+      setActiveTab('sql');
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!isApproved) return;
     const text = activeTab === 'sql' ? data?.modelSql : data?.schemaYaml;
     if (text) {
-      navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }

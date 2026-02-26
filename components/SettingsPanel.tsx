@@ -57,8 +57,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ config, onUpdate }) => {
                   onChange={(e) => onUpdate({ geminiModel: e.target.value })}
                   className="w-full bg-[#3c3c3c] border border-transparent focus:border-[#007acc] rounded px-2 py-1 text-xs text-[#cccccc] outline-none"
                 >
-                  <option value="gemini-3-flash-preview">Gemini 3 Flash (Fast)</option>
-                  <option value="gemini-3-pro-preview">Gemini 3 Pro (High Intelligence)</option>
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast)</option>
+                  <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash (Balanced)</option>
+                  <option value="gemini-2.5-pro-preview-05-06">Gemini 2.5 Pro (High Intelligence)</option>
                 </select>
               </div>
             </div>

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SQLSnippet, QueryResult, SafetyCheck, LintResult, ExecutionHistory, SqlDialect } from './types';
 import Sidebar from './components/Sidebar';
 import SnippetExplorer from './components/SnippetExplorer';
@@ -54,6 +54,7 @@ const App: React.FC = () => {
   const [searchResults, setSearchResults] = useState<SQLSnippet[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [editorMinimized, setEditorMinimized] = useState(false);
+  const pendingRerunRef = useRef(false);
   
   // Safety Approval State
   const [showSafetyApproval, setShowSafetyApproval] = useState(false);
@@ -68,7 +69,7 @@ const App: React.FC = () => {
   const [appConfig, setAppConfig] = useState({
     openaiKey: '',
     anthropicKey: '',
-    geminiModel: 'gemini-3-flash-preview',
+    geminiModel: 'gemini-2.0-flash',
     dialect: 'PostgreSQL' as SqlDialect
   });
 
@@ -100,8 +101,12 @@ const App: React.FC = () => {
     setActiveId(initial[0].id);
     setSqlCode(initial[0].code);
     setSnippetName(initial[0].name);
-    initializeChat(appConfig.dialect);
+    initializeChat(appConfig.dialect, appConfig.geminiModel);
   }, []);
+
+  useEffect(() => {
+    initializeChat(appConfig.dialect, appConfig.geminiModel);
+  }, [appConfig.dialect, appConfig.geminiModel]);
 
   const handleSelectSnippet = (id: string) => {
     const snip = snippets.find(s => s.id === id);
@@ -117,7 +122,7 @@ const App: React.FC = () => {
   };
 
   const handleNewSnippet = () => {
-    const newId = Math.random().toString(36).substr(2, 9);
+    const newId = Math.random().toString(36).substring(2, 11);
     const newSnip: SQLSnippet = {
       id: newId,
       name: 'New Snippet',
@@ -152,7 +157,7 @@ const App: React.FC = () => {
     if (!sqlCode.trim()) return;
     setIsLinting(true);
     try {
-      const result = await lintAndFormatSql(sqlCode, appConfig.dialect);
+      const result = await lintAndFormatSql(sqlCode, appConfig.dialect, appConfig.geminiModel);
       setLintInfo(result);
       if (result.formattedCode) {
         setSqlCode(result.formattedCode);
@@ -176,7 +181,7 @@ const App: React.FC = () => {
     if (!skipSafetyCheck && isMod) {
       setIsAnalyzingSafety(true);
       try {
-        const safety = await checkSqlSafety(code, appConfig.dialect);
+        const safety = await checkSqlSafety(code, appConfig.dialect, appConfig.geminiModel);
         setSafetyInfo(safety);
         
         if (!safety.isSafe || safety.warnings.length > 0) {
@@ -198,7 +203,7 @@ const App: React.FC = () => {
       setQueryResult(result);
 
       const historyEntry: ExecutionHistory = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substring(2, 11),
         snippetId: activeId,
         name: snippetName || 'Ad-hoc Query',
         code: code,
@@ -225,7 +230,7 @@ const App: React.FC = () => {
     if (!activeId) return;
     setIsSaving(true);
     try {
-      const { tags, category } = await autoTagSnippet(sqlCode, appConfig.dialect);
+      const { tags, category } = await autoTagSnippet(sqlCode, appConfig.dialect, appConfig.geminiModel);
       setSnippets(prev => prev.map(s => 
         s.id === activeId 
           ? { ...s, name: snippetName, code: sqlCode, tags, category } 
@@ -241,7 +246,7 @@ const App: React.FC = () => {
     setShowDbtModal(true);
     setIsExportingDbt(true);
     try {
-      const dbtData = await generateDbtModel(snippetName || "Untitled Model", sqlCode, appConfig.dialect);
+      const dbtData = await generateDbtModel(snippetName || "Untitled Model", sqlCode, appConfig.dialect, appConfig.geminiModel);
       setDbtExportData(dbtData);
     } finally {
       setIsExportingDbt(false);
@@ -252,7 +257,7 @@ const App: React.FC = () => {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     try {
-      const matchedIds = await semanticSearch(searchQuery, snippets);
+      const matchedIds = await semanticSearch(searchQuery, snippets, appConfig.geminiModel);
       const results = matchedIds
         .map(id => snippets.find(s => s.id === id))
         .filter((s): s is SQLSnippet => !!s);
@@ -277,11 +282,16 @@ const App: React.FC = () => {
   };
 
   const rerunFromHistory = (entry: ExecutionHistory) => {
+    pendingRerunRef.current = true;
     loadFromHistory(entry);
-    setTimeout(() => {
-      runQuery();
-    }, 0);
   };
+
+  useEffect(() => {
+    if (pendingRerunRef.current) {
+      pendingRerunRef.current = false;
+      runQuery();
+    }
+  }, [sqlCode]);
 
   return (
     <div className="flex h-screen bg-[#1e1e1e] text-[#d4d4d4] overflow-hidden">

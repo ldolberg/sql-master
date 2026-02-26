@@ -13,7 +13,6 @@
     "Machine Learning"
   ],
   "main": "./out/extension.js",
-  "browser": "./out/extension.js",
   "activationEvents": [],
   "contributes": {
     "viewsContainers": {
@@ -21,7 +20,7 @@
         {
           "id": "sql-snippet-master-sidebar",
           "title": "SQL Master",
-          "icon": "database"
+          "icon": "icons/activity-bar.svg"
         }
       ]
     },
@@ -43,18 +42,19 @@
     "package": "vsce package"
   },
   "dependencies": {
-    "@google/genai": "^1.40.0",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/vscode": "^1.75.0",
     "@vitejs/plugin-react": "^5.1.4",
     "@vscode/vsce": "^2.19.0",
+    "tailwindcss": "^4.2.1",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3",
     "vite": "^7.3.1"

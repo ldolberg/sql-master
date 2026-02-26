@@ -6,7 +6,8 @@ import * as vscode from 'vscode';
  * This is the entry point for VS Code.
  */
 export function activate(context: vscode.ExtensionContext) {
-    const provider = new SqlSnippetMasterProvider(context.extensionUri);
+    const extensionUri = vscode.Uri.file(context.extensionPath);
+    const provider = new SqlSnippetMasterProvider(extensionUri);
 
     context.subscriptions.push(
         vscode.window.registerWebviewViewProvider('sqlSnippetMasterView', provider)
@@ -28,13 +29,12 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
     ) {
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri, vscode.Uri.joinPath(this._extensionUri, 'dist')]
+            localResourceRoots: [this._extensionUri]
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
-        // Handle messages from the webview
-        webviewView.webview.onDidReceiveMessage(data => {
+        const messageDisposable = webviewView.webview.onDidReceiveMessage(data => {
             switch (data.type) {
                 case 'showError':
                     vscode.window.showErrorMessage(data.value);
@@ -44,53 +44,46 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                     return;
             }
         });
+
+        webviewView.onDidDispose(() => {
+            messageDisposable.dispose();
+        });
     }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
-        // In a real extension build, this would read index.html from disk.
-        // For the purpose of this ESM-based demo, we serve a standard shell
-        // that initializes the React application.
-        return `
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>SQL Snippet Master</title>
-                <script src="https://cdn.tailwindcss.com"></script>
-                <style>
-                    @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap');
-                    body {
-                        font-family: 'Inter', sans-serif;
-                        background-color: #1e1e1e;
-                        color: #d4d4d4;
-                        margin: 0;
-                        padding: 0;
-                        overflow: hidden;
-                        height: 100vh;
-                    }
-                    #root { height: 100%; }
-                </style>
-                <script type="importmap">
-                {
-                  "imports": {
-                    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-                    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-                    "react/": "https://esm.sh/react@^19.2.4/",
-                    "react": "https://esm.sh/react@^19.2.4",
-                    "@google/genai": "https://esm.sh/@google/genai@^1.40.0"
-                  }
-                }
-                </script>
-            </head>
-            <body>
-                <div id="root"></div>
-                <!-- Bundled webview app -->
-                <script type="module" src="${webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'dist', 'index.js'))}"></script>
-            </body>
-            </html>
-        `;
+        const scriptUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'dist', 'index.js')
+        );
+        const styleUri = webview.asWebviewUri(
+            vscode.Uri.joinPath(this._extensionUri, 'dist', 'index.css')
+        );
+        const nonce = getNonce();
+        const csp = `default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}'; font-src ${webview.cspSource}; connect-src https://generativelanguage.googleapis.com;`;
+
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
+<link rel="stylesheet" href="${styleUri}">
+<title>SQL Snippet Master</title>
+</head>
+<body>
+<div id="root"></div>
+<script nonce="${nonce}" type="module" src="${scriptUri}"></script>
+</body>
+</html>`;
     }
 }
 
 export function deactivate() {}
+
+function getNonce(): string {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
+}

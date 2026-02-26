@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, User, Sparkles, Loader2, Eraser, Quote } from 'lucide-react';
 import { ChatMessage, SqlDialect } from '../types';
-import { sendChatMessage, initializeChat } from '../services/geminiService';
+import { sendChatMessage, initializeChat, MISSING_API_KEY_MESSAGE } from '../services/geminiService';
 
 interface ChatPanelProps {
   currentSql: string;
@@ -31,9 +31,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ currentSql, dialect }) => {
     setIsTyping(true);
 
     try {
-      const result = await sendChatMessage(textToSend, currentSql);
+      const result = sendChatMessage(textToSend, currentSql);
       let modelText = '';
-      
+
       const modelMsgPlaceholder: ChatMessage = { role: 'model', text: '', timestamp: Date.now() };
       setMessages(prev => [...prev, modelMsgPlaceholder]);
 
@@ -47,7 +47,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ currentSql, dialect }) => {
       }
     } catch (error) {
       console.error("Chat failed", error);
-      setMessages(prev => [...prev, { role: 'model', text: "Sorry, I encountered an error processing your request.", timestamp: Date.now() }]);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const text = errMsg.includes("API key") || errMsg === MISSING_API_KEY_MESSAGE
+        ? errMsg
+        : "Sorry, I encountered an error processing your request.";
+      setMessages(prev => [...prev, { role: 'model', text, timestamp: Date.now() }]);
     } finally {
       setIsTyping(false);
     }

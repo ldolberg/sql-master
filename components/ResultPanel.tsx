@@ -60,7 +60,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({ result, isLoading }) => {
               <tr key={idx} className="hover:bg-[#2a2d2e] group">
                 {result.columns.map(col => (
                   <td key={col} className="px-4 py-2 border-b border-[#333333] text-[#cccccc] font-mono whitespace-nowrap">
-                    {String(row[col])}
+                    {row[col] != null ? String(row[col]) : ''}
                   </td>
                 ))}
               </tr>

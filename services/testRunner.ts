@@ -23,12 +23,17 @@ export async function runTestCase(test: Omit<TestCase, 'status'>): Promise<{ pas
     switch (test.id) {
       case 't1': {
         const res = await executeSql('SELECT * FROM users', 'PostgreSQL');
-        if (res.status !== 'success' || !res.message.includes('PostgreSQL')) throw new Error('Dialect mismatch in result');
+        if (res.status !== 'success' || !res.message?.includes('PostgreSQL')) throw new Error('Dialect mismatch in result');
         break;
       }
       case 't2': {
         const res = await executeSql('SELECT * FROM dataset.table', 'BigQuery');
         if (!res.rows.some(r => r.dataset_id)) throw new Error('BigQuery specific rows not returned');
+        break;
+      }
+      case 't3': {
+        const res = await executeSql("'; DROP TABLE users; --", 'PostgreSQL');
+        if (res.status === 'error') throw new Error('Runner crashed on injection string');
         break;
       }
       case 't4': {
