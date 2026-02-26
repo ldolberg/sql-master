@@ -21,6 +21,19 @@ interface MockQueryResult {
     message: string;
 }
 
+interface Snippet {
+    id: string;
+    name: string;
+    code: string;
+    tags: string[];
+}
+
+const DEFAULT_SNIPPETS: Snippet[] = [
+    { id: '1', name: 'Users list', code: 'SELECT id, username, email FROM user;', tags: ['select', 'user'] },
+    { id: '2', name: 'Clients', code: 'SELECT client_id, name, plan FROM client;', tags: ['select', 'client'] },
+    { id: '3', name: 'Count', code: 'SELECT COUNT(*) AS total FROM user;', tags: ['aggregate'] },
+];
+
 function runMockSql(sql: string): MockQueryResult {
     const start = Date.now();
     const lower = sql.toLowerCase().trim();
@@ -53,6 +66,8 @@ function runMockSql(sql: string): MockQueryResult {
 }
 
 class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
+    private _snippets: Snippet[] = [...DEFAULT_SNIPPETS];
+
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
     resolveWebviewView(
@@ -67,7 +82,7 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
 
-        webviewView.webview.onDidReceiveMessage((data: { type: string; sql?: string }) => {
+        webviewView.webview.onDidReceiveMessage((data: { type: string; sql?: string; id?: string }) => {
             if (data.type === 'runSql' && typeof data.sql === 'string') {
                 const result = runMockSql(data.sql);
                 webviewView.webview.postMessage({
@@ -78,6 +93,26 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
                     status: result.status,
                     message: result.message,
                 });
+                return;
+            }
+            if (data.type === 'getSnippetList') {
+                webviewView.webview.postMessage({
+                    type: 'snippetList',
+                    snippets: this._snippets.map((s) => ({ id: s.id, name: s.name, tags: s.tags })),
+                });
+                return;
+            }
+            if (data.type === 'loadSnippet' && typeof data.id === 'string') {
+                const snip = this._snippets.find((s) => s.id === data.id);
+                if (snip) {
+                    webviewView.webview.postMessage({
+                        type: 'snippet',
+                        id: snip.id,
+                        name: snip.name,
+                        code: snip.code,
+                        tags: snip.tags,
+                    });
+                }
             }
         });
     }
@@ -139,10 +174,23 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             font-size: 0.85em;
             white-space: pre-wrap;
         }
+        .snippets-wrap { margin-bottom: 12px; }
+        .snippets-wrap label { display: block; margin-bottom: 4px; font-size: 0.9em; opacity: 0.9; }
+        #snippet-list { list-style: none; margin: 0; padding: 0; max-height: 120px; overflow-y: auto; }
+        #snippet-list li {
+            padding: 4px 8px; margin: 2px 0; cursor: pointer; border-radius: 4px;
+            background: var(--vscode-list-inactiveSelectionBackground);
+            font-size: 0.9em;
+        }
+        #snippet-list li:hover { background: var(--vscode-list-hoverBackground); }
     </style>
 </head>
 <body>
     <h1>SQL Snippet Master</h1>
+    <div class="snippets-wrap">
+        <label>Snippets</label>
+        <ul id="snippet-list"></ul>
+    </div>
     <div class="editor-wrap">
         <label for="sql-editor">SQL</label>
         <textarea id="sql-editor" placeholder="SELECT * FROM ..."></textarea>
@@ -158,6 +206,8 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             var editor = document.getElementById('sql-editor');
             var runBtn = document.getElementById('run-btn');
             var results = document.getElementById('results');
+            var snippetList = document.getElementById('snippet-list');
+            vscode.postMessage({ type: 'getSnippetList' });
             runBtn.addEventListener('click', function() {
                 var sql = editor.value.trim();
                 results.textContent = 'Running...';
@@ -166,6 +216,22 @@ class SqlSnippetMasterProvider implements vscode.WebviewViewProvider {
             });
             window.addEventListener('message', function(e) {
                 var msg = e.data;
+                if (msg.type === 'snippetList') {
+                    var list = msg.snippets || [];
+                    snippetList.innerHTML = '';
+                    list.forEach(function(s) {
+                        var li = document.createElement('li');
+                        li.textContent = s.name + (s.tags && s.tags.length ? ' [' + s.tags.join(', ') + ']' : '');
+                        li.dataset.id = s.id;
+                        li.addEventListener('click', function() { vscode.postMessage({ type: 'loadSnippet', id: s.id }); });
+                        snippetList.appendChild(li);
+                    });
+                    return;
+                }
+                if (msg.type === 'snippet') {
+                    editor.value = msg.code || '';
+                    return;
+                }
                 if (msg.type !== 'runResult') return;
                 runBtn.disabled = false;
                 var cols = msg.columns || [];
