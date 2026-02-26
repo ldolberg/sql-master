@@ -1,0 +1,40 @@
+{
+  "name": "sql-snippet-master",
+  "displayName": "SQL Snippet Master",
+  "description": "AI-powered SQL snippet management with safety guardrails.",
+  "version": "0.1.0",
+  "publisher": "sql-master",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages", "Data Science"],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sql-snippet-master-sidebar",
+          "title": "SQL Master",
+          "icon": "icons/activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "sql-snippet-master-sidebar": [
+        {
+          "type": "webview",
+          "id": "sqlSnippetMasterView",
+          "name": "SQL Snippet Master"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.3.3"
+  }
+}
